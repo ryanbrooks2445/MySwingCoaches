@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Env
+.env
+.env.local
+.env*.local
+analysis-service/.env
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+
+# Python
+analysis-service/.pytest_cache/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Supabase
+supabase/.temp/
