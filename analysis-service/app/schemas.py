@@ -17,26 +17,67 @@ CHECKPOINTS = [
 ]
 
 
-class TopIssue(BaseModel):
-    issue: str
-    severity: Literal["low", "medium", "high"]
-    why_it_matters: str
-    fix: str
-    drill: str
+class DiagnosticTruth(BaseModel):
+    headline: str = Field(description="Pattern name, max 6 words e.g. 'The Over-the-Top Cut'")
+    what_your_eye_sees: str = Field(description="Ball flight. Max 2 short sentences.")
+    mechanical_cause: str = Field(description="Root cause only. Max 2 sentences. **Bold** one key term.")
+    kinetic_chain: str = Field(
+        description="Max 2 bullets: fault → compensation → flight. One analogy max."
+    )
+
+
+class BlueprintStep(BaseModel):
+    title: str = Field(description="Max 5 words")
+    step_type: Literal["setup", "visual_cue", "constraint_drill"]
+    adjustment: str | None = Field(default=None, description="One line setup change")
+    action: str | None = Field(default=None, description="One line what to do")
+    feel: str = Field(description="THE money line — max 15 words, what the body feels")
+    success_condition: str | None = Field(default=None, description="One line pass/fail check")
+    video_slug: str | None = Field(
+        default=None,
+        description="From catalog. Required for constraint_drill.",
+    )
+    video_url: str | None = Field(default=None, description="Leave null")
+    video_title: str | None = Field(default=None, description="Leave null")
+
+
+class KinestheticBlueprint(BaseModel):
+    headline: str = Field(description="Max 5 words")
+    intro: str = Field(description="One sentence max — changing boundaries, not rebuilding")
+    steps: list[BlueprintStep] = Field(min_length=2, max_length=3)
+
+
+class MilestoneBlock(BaseModel):
+    days: str = Field(description="e.g. 'Day 1-3'")
+    title: str = Field(description="Max 4 words")
+    detail: str = Field(description="Max 2 short sentences — reps + what to ignore")
+
+
+class AccountabilityPlan(BaseModel):
+    weekly_focus: str = Field(description="1-3 words e.g. 'Rotation'")
+    milestones: list[MilestoneBlock] = Field(min_length=3, max_length=3)
+    day_7_test: str = Field(description="One sentence pass/fail before next upload")
 
 
 class CoachingReportSchema(BaseModel):
-    overall_score: int = Field(ge=0, le=100)
-    setup_score: int = Field(ge=0, le=100)
-    backswing_score: int = Field(ge=0, le=100)
-    downswing_score: int = Field(ge=0, le=100)
-    impact_score: int = Field(ge=0, le=100)
-    finish_score: int = Field(ge=0, le=100)
-    main_diagnosis: str
-    top_issues: list[TopIssue]
-    practice_plan: str
-    next_upload_focus: str
+    personalized_greeting: str = Field(
+        description=(
+            "1-2 short sentences. Use player's first name. Reference their swing history "
+            "(first upload vs returning, prior focus if any). Hook them to open the app again. Max 35 words."
+        )
+    )
+    diagnostic: DiagnosticTruth
+    blueprint: KinestheticBlueprint
+    roadmap: AccountabilityPlan
+    next_upload_focus: str = Field(description="One filming tip, max 20 words")
     disclaimer: str
+
+
+class KeyFrame(BaseModel):
+    phase: str
+    frame_index: int
+    storage_path: str | None = None
+    url: str | None = None
 
 
 class AnalyzeRequest(BaseModel):
@@ -44,44 +85,7 @@ class AnalyzeRequest(BaseModel):
     video_id: str
     user_id: str
     video_url: str
-    handedness: Literal["right", "left"] = "right"
-    skill_level: Literal["beginner", "intermediate", "advanced"] = "intermediate"
-    camera_angle: Literal["face-on", "down-the-line", "unknown"] = "unknown"
     history_summary: str | None = None
-
-
-class CheckpointFrame(BaseModel):
-    phase: str
-    frame_index: int
-    storage_path: str | None = None
-    url: str | None = None
-    landmarks: dict | None = None
-    confidence: float = 0.5
-
-
-class DetectedIssue(BaseModel):
-    issue_code: str
-    issue: str
-    severity: Literal["low", "medium", "high"]
-    why_it_matters: str
-    fix: str
-    drill: str
-    metric_evidence: dict = Field(default_factory=dict)
-
-
-class SwingMetrics(BaseModel):
-    head_movement: float
-    spine_angle_address: float
-    spine_angle_impact: float
-    spine_angle_change: float
-    hip_rotation_address_to_top: float
-    hip_rotation_top_to_impact: float
-    shoulder_tilt_top: float
-    lead_arm_angle_top: float
-    lead_arm_angle_impact: float
-    trail_elbow_flex_top: float
-    knee_bend_address: float
-    knee_bend_impact: float
-    finish_balance: float
-    tempo_ratio: float
-    raw_metrics: dict = Field(default_factory=dict)
+    player_name: str | None = None
+    swing_number: int | None = None
+    player_context: str | None = None

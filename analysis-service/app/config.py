@@ -8,7 +8,9 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     gemini_api_key: str = ""
     analysis_service_secret: str = "change-me-in-production"
+    # flash has free-tier video quota; pro requires billing on most keys
     gemini_model: str = "gemini-2.5-flash"
+    gemini_fallback_model: str = "gemini-2.5-flash"
 
 
 def get_settings() -> Settings:

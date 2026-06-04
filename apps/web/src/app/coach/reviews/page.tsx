@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
 import { Card } from "@/components/ui/Card";
-import { SeverityBadge } from "@/components/ScoreRing";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -24,7 +23,7 @@ export default async function CoachReviewsPage() {
     .from("coach_reviews")
     .select(`
       *,
-      swing_reports(id, overall_score, main_diagnosis, status),
+      swing_reports(id, main_diagnosis, status),
       profiles!coach_reviews_user_id_fkey(display_name)
     `)
     .order("created_at", { ascending: false })
@@ -32,7 +31,7 @@ export default async function CoachReviewsPage() {
 
   const { data: pendingReports } = await supabase
     .from("swing_reports")
-    .select("id, user_id, overall_score, created_at, status, profiles(display_name)")
+    .select("id, user_id, main_diagnosis, created_at, status, profiles(display_name)")
     .eq("status", "ready")
     .order("created_at", { ascending: false })
     .limit(20);
@@ -84,8 +83,8 @@ export default async function CoachReviewsPage() {
                         {new Date(report.created_at).toLocaleString()}
                       </p>
                     </div>
-                    <p className="text-2xl font-semibold text-[var(--color-accent)]">
-                      {report.overall_score ?? "—"}
+                    <p className="max-w-xs truncate text-sm font-medium text-[var(--color-accent)]">
+                      {report.main_diagnosis ?? "Blueprint"}
                     </p>
                   </div>
                 </Card>

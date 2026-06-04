@@ -20,7 +20,7 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    const { error: authError } = await supabase.auth.signUp({
+    const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { display_name: displayName } },
@@ -28,6 +28,12 @@ export default function SignupPage() {
     setLoading(false);
     if (authError) {
       setError(authError.message);
+      return;
+    }
+    if (data.user && !data.session) {
+      setError(
+        "Check your email to confirm your account, then log in. For local dev, disable email confirmation in Supabase → Authentication → Sign In / Providers → Email."
+      );
       return;
     }
     router.push("/dashboard");

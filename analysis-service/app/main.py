@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="MySwingCoaches Analysis Service",
-    description="OpenCV + MediaPipe + Rules Engine + Gemini coaching pipeline",
+    description="OpenCV frame extraction + Gemini video coaching pipeline",
     version="0.1.0",
 )
 

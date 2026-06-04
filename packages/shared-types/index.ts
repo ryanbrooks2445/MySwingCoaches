@@ -7,9 +7,6 @@ export type IssueSeverity = "low" | "medium" | "high";
 export interface Profile {
   id: string;
   display_name: string | null;
-  handedness: "right" | "left";
-  skill_level: "beginner" | "intermediate" | "advanced";
-  camera_angle_pref: "face-on" | "down-the-line" | "unknown";
   role: UserRole;
 }
 
@@ -32,7 +29,6 @@ export interface SwingVideo {
   size_bytes: number;
   duration_sec: number | null;
   status: VideoStatus;
-  camera_angle: string;
   created_at: string;
 }
 
@@ -95,7 +91,7 @@ export interface CoachReview {
 }
 
 export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
-  free: 1,
+  free: 5,
   player: 10,
   serious: -1,
 };
@@ -104,7 +100,7 @@ export const PLAN_PRICES: Record<SubscriptionPlan, { name: string; price: string
   free: {
     name: "Free",
     price: "$0",
-    features: ["1 swing analysis", "Basic AI report", "Key frame breakdown"],
+    features: ["5 swing analyses", "Basic AI report", "Key frame breakdown"],
   },
   player: {
     name: "Player",

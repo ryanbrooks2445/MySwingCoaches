@@ -8,7 +8,7 @@ from supabase import create_client
 
 from app.config import get_settings
 from app.frame_extractor import save_frame_jpeg
-from app.schemas import CheckpointFrame, CoachingReportSchema, DetectedIssue, SwingMetrics
+from app.schemas import CoachingReportSchema, KeyFrame
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +20,17 @@ def get_supabase_client():
     return create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
-def upload_checkpoint_frames(
+def upload_key_frames(
     user_id: str,
     video_id: str,
     frames: list,
-    checkpoints: dict[str, int],
-    pose_sequence: list,
-    phase_confidence: dict[str, float],
-) -> list[CheckpointFrame]:
+    keyframe_indices: dict[str, int],
+) -> list[KeyFrame]:
     client = get_supabase_client()
-    results: list[CheckpointFrame] = []
+    results: list[KeyFrame] = []
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        for phase, idx in checkpoints.items():
+        for phase, idx in keyframe_indices.items():
             frame = frames[idx]
             local_path = Path(tmpdir) / f"{phase}.jpg"
             save_frame_jpeg(frame, local_path)
@@ -48,15 +46,12 @@ def upload_checkpoint_frames(
             signed = client.storage.from_("swing-frames").create_signed_url(storage_path, 86400)
             url = signed.get("signedURL") or signed.get("signedUrl") or ""
 
-            landmarks = pose_sequence[idx] if idx < len(pose_sequence) else None
             results.append(
-                CheckpointFrame(
+                KeyFrame(
                     phase=phase,
                     frame_index=idx,
                     storage_path=storage_path,
                     url=url,
-                    landmarks=landmarks,
-                    confidence=phase_confidence.get(phase, 0.5),
                 )
             )
 
@@ -69,94 +64,46 @@ def persist_analysis_result(
     video_id: str,
     user_id: str,
     report: CoachingReportSchema,
-    metrics: SwingMetrics,
-    rules_issues: list[DetectedIssue],
-    checkpoint_frames: list[CheckpointFrame],
+    key_frames: list[KeyFrame],
     ai_narrative_available: bool,
+    gemini_meta: dict | None = None,
 ) -> None:
     client = get_supabase_client()
 
-    key_frame_urls = [
-        {"phase": f.phase, "url": f.url, "confidence": f.confidence}
-        for f in checkpoint_frames
-    ]
-    pose_landmarks = {
-        f.phase: f.landmarks for f in checkpoint_frames if f.landmarks
+    key_frame_urls = [{"phase": f.phase, "url": f.url} for f in key_frames]
+    coaching_content = report.model_dump()
+
+    gemini_raw = {
+        **coaching_content,
+        "_meta": gemini_meta or {},
     }
 
     client.table("swing_reports").update({
         "status": "ready",
-        "overall_score": report.overall_score,
-        "setup_score": report.setup_score,
-        "backswing_score": report.backswing_score,
-        "downswing_score": report.downswing_score,
-        "impact_score": report.impact_score,
-        "finish_score": report.finish_score,
-        "main_diagnosis": report.main_diagnosis,
-        "practice_plan": report.practice_plan,
+        "overall_score": None,
+        "setup_score": None,
+        "backswing_score": None,
+        "downswing_score": None,
+        "impact_score": None,
+        "finish_score": None,
+        "main_diagnosis": report.diagnostic.headline,
+        "swing_strengths": [],
+        "practice_plan": report.roadmap.weekly_focus,
         "next_upload_focus": report.next_upload_focus,
         "disclaimer": report.disclaimer,
+        "coaching_content": coaching_content,
         "key_frame_urls": key_frame_urls,
-        "pose_landmarks": pose_landmarks,
-        "gemini_raw": report.model_dump(),
+        "pose_landmarks": {},
+        "gemini_raw": gemini_raw,
         "ai_narrative_available": ai_narrative_available,
+        "error_message": (gemini_meta or {}).get("error") if not ai_narrative_available else None,
     }).eq("id", analysis_id).execute()
 
     client.table("swing_videos").update({"status": "ready"}).eq("id", video_id).execute()
 
-    client.table("swing_metrics").insert({
-        "report_id": analysis_id,
-        "user_id": user_id,
-        **{k: v for k, v in metrics.model_dump().items() if k != "raw_metrics"},
-        "raw_metrics": metrics.raw_metrics,
-    }).execute()
-
-    # Merge Gemini top issues with rules issues
     client.table("swing_issues").delete().eq("report_id", analysis_id).execute()
-
-    gemini_issues = report.top_issues
-    for i, gi in enumerate(gemini_issues):
-        client.table("swing_issues").insert({
-            "report_id": analysis_id,
-            "user_id": user_id,
-            "issue_code": gi.issue.lower().replace(" ", "_")[:50],
-            "issue": gi.issue,
-            "severity": gi.severity,
-            "why_it_matters": gi.why_it_matters,
-            "fix": gi.fix,
-            "drill": gi.drill,
-            "source": "gemini",
-            "sort_order": i,
-        }).execute()
-
-    for i, ri in enumerate(rules_issues):
-        if not any(gi.issue == ri.issue for gi in gemini_issues):
-            client.table("swing_issues").insert({
-                "report_id": analysis_id,
-                "user_id": user_id,
-                "issue_code": ri.issue_code,
-                "issue": ri.issue,
-                "severity": ri.severity,
-                "why_it_matters": ri.why_it_matters,
-                "fix": ri.fix,
-                "drill": ri.drill,
-                "source": "rules",
-                "metric_evidence": ri.metric_evidence,
-                "sort_order": 10 + i,
-            }).execute()
-
     client.table("drill_recommendations").delete().eq("report_id", analysis_id).execute()
-    for i, gi in enumerate(gemini_issues):
-        client.table("drill_recommendations").insert({
-            "report_id": analysis_id,
-            "user_id": user_id,
-            "title": gi.drill,
-            "description": gi.fix,
-            "focus_area": gi.issue,
-            "sort_order": i,
-        }).execute()
 
-    # Increment analyses_used
     sub = client.table("subscriptions").select("analyses_used").eq("user_id", user_id).single().execute()
     if sub.data:
         used = sub.data.get("analyses_used", 0) + 1

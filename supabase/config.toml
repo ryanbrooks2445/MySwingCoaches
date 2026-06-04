@@ -2,7 +2,7 @@
 # Run: supabase start (requires Supabase CLI)
 # See README.md for cloud setup via supabase link + db push
 
-project_id = "myswingcoaches"
+project_id = "abljgrtgttbekqrrelln"
 
 [api]
 enabled = true

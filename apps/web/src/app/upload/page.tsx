@@ -6,13 +6,18 @@ import { AppNav } from "@/components/AppNav";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { createClient } from "@/lib/supabase/client";
+
+function guessMimeType(file: File): string {
+  if (file.type) return file.type;
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "mov") return "video/quicktime";
+  return "video/mp4";
+}
 
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [handedness, setHandedness] = useState("right");
-  const [skillLevel, setSkillLevel] = useState("intermediate");
-  const [cameraAngle, setCameraAngle] = useState("unknown");
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,33 +27,86 @@ export default function UploadPage() {
     if (!file) return;
     setUploading(true);
     setError(null);
-    setStatus("Uploading video...");
-    setProgress(10);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("handedness", handedness);
-    formData.append("skillLevel", skillLevel);
-    formData.append("cameraAngle", cameraAngle);
+    setProgress(5);
 
     try {
-      setProgress(30);
-      const res = await fetch("/api/swings/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not logged in. Please log in and try again.");
 
-      setProgress(60);
-      setStatus("Analyzing swing...");
+      const videoId = crypto.randomUUID();
+      const reportId = crypto.randomUUID();
+      const ext = file.name.split(".").pop()?.toLowerCase() || "mp4";
+      const storagePath = `${user.id}/${videoId}/swing.${ext}`;
+      const mimeType = guessMimeType(file);
 
-      const analyzeRes = await fetch(`/api/swings/${data.reportId}/analyze`, { method: "POST" });
-      const analyzeData = await analyzeRes.json();
-      if (!analyzeRes.ok) throw new Error(analyzeData.error || "Analysis failed");
+      setStatus("Uploading video to storage...");
+      setProgress(20);
+
+      const { error: storageError } = await supabase.storage
+        .from("swing-videos")
+        .upload(storagePath, file, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (storageError) {
+        throw new Error(`Storage upload failed: ${storageError.message}`);
+      }
+
+      setProgress(50);
+      setStatus("Registering swing...");
+
+      const registerRes = await fetch("/api/swings/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId,
+          reportId,
+          storagePath,
+          originalFilename: file.name,
+          mimeType,
+          sizeBytes: file.size,
+        }),
+      });
+
+      const registerData = await registerRes.json();
+      if (!registerRes.ok) {
+        throw new Error(registerData.error || "Failed to register swing");
+      }
+
+      setProgress(70);
+      setStatus("Analyzing swing with AI video coach (1–3 min)...");
+
+      const analyzeRes = await fetch(`/api/swings/${reportId}/analyze`, {
+        method: "POST",
+      });
+
+      let analyzeData: { error?: string } = {};
+      try {
+        analyzeData = await analyzeRes.json();
+      } catch {
+        throw new Error(
+          "Analysis service unreachable. Start it with: cd analysis-service && uvicorn app.main:app --reload --port 8001"
+        );
+      }
+
+      if (!analyzeRes.ok) {
+        throw new Error(analyzeData.error || "Analysis failed");
+      }
 
       setProgress(100);
       setStatus("Complete!");
-      router.push(`/swings/${data.reportId}`);
+      router.push(`/swings/${reportId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      if (message === "Failed to fetch") {
+        setError(
+          "Network error — is the dev server running? Run: cd apps/web && npm run dev"
+        );
+      } else {
+        setError(message);
+      }
       setStatus(null);
     } finally {
       setUploading(false);
@@ -71,44 +129,6 @@ export default function UploadPage() {
               Selected: {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
             </p>
           )}
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-[var(--color-muted)]">Handedness</span>
-              <select
-                value={handedness}
-                onChange={(e) => setHandedness(e.target.value)}
-                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-              >
-                <option value="right">Right</option>
-                <option value="left">Left</option>
-              </select>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-[var(--color-muted)]">Skill level</span>
-              <select
-                value={skillLevel}
-                onChange={(e) => setSkillLevel(e.target.value)}
-                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-              >
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-[var(--color-muted)]">Camera angle</span>
-              <select
-                value={cameraAngle}
-                onChange={(e) => setCameraAngle(e.target.value)}
-                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-              >
-                <option value="unknown">Unknown</option>
-                <option value="face-on">Face-on</option>
-                <option value="down-the-line">Down-the-line</option>
-              </select>
-            </label>
-          </div>
 
           {uploading && (
             <div className="space-y-2">

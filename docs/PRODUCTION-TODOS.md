@@ -13,17 +13,15 @@ Items intentionally stubbed or simplified in the MVP.
 - [ ] Background job queue (Inngest, Trigger.dev, or Supabase Edge Functions + queue) instead of synchronous FastAPI call from Next.js
 - [ ] Webhook auth + idempotency keys for `/analyze`
 - [ ] Rate limiting (Upstash Redis) on upload and analyze endpoints
-- [ ] Horizontal scaling for analysis workers; optional GPU for MediaPipe
+- [ ] Horizontal scaling for analysis workers
 - [ ] CDN for swing-frames bucket; retention / lifecycle policies
 
 ## Analysis quality
 
-- [ ] Replace checkpoint heuristics with trained phase classifier or club-head tracking
-- [ ] Real pro swing model library (replace placeholder images in `ComparisonPanel`)
-- [ ] Multimodal Gemini: pass key frame bytes for visual reasoning
+- [ ] Host proprietary drill clips in Supabase `drill-videos` bucket (replace YouTube catalog URLs)
+- [ ] Trained swing phase classifier for better key-frame labels
 - [ ] FFmpeg transcoding pipeline (normalize fps, resolution, rotation from phone metadata)
-- [ ] Camera-angle calibration and multi-view fusion
-- [ ] Confidence thresholds — skip report sections when pose visibility is low
+- [ ] Camera-angle guidance in upload flow (face-on vs down-the-line)
 
 ## Security & compliance
 

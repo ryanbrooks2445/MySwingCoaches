@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ALLOWED_VIDEO_TYPES, MAX_VIDEO_SIZE_BYTES } from "@/lib/utils";
+import { ALLOWED_VIDEO_TYPES, ALLOWED_VIDEO_EXTENSIONS, MAX_VIDEO_SIZE_BYTES } from "@/lib/utils";
 
 interface UploadDropzoneProps {
   onFileSelect: (file: File) => void;
@@ -15,7 +15,10 @@ export function UploadDropzone({ onFileSelect, disabled }: UploadDropzoneProps) 
   const [error, setError] = useState<string | null>(null);
 
   const validate = useCallback((file: File) => {
-    if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const typeOk = ALLOWED_VIDEO_TYPES.includes(file.type);
+    const extOk = ext ? ALLOWED_VIDEO_EXTENSIONS.includes(ext) : false;
+    if (!typeOk && !extOk) {
       return "Only MP4 and MOV files are supported.";
     }
     if (file.size > MAX_VIDEO_SIZE_BYTES) {

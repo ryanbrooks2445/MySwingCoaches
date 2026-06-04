@@ -3,8 +3,10 @@ import { AppNav } from "@/components/AppNav";
 import { SwingCard } from "@/components/SwingCard";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { ScoreRing } from "@/components/ScoreRing";
+import { StatusBadge } from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
+import { getReportFocusLabel } from "@/lib/coaching";
+import type { SwingReport } from "@/lib/types";
 import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
@@ -31,14 +33,8 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false })
     .limit(10);
 
-  const latestScore = reports?.[0]?.overall_score ?? null;
-  const avgScore =
-    reports?.filter((r) => r.overall_score != null).length
-      ? Math.round(
-          reports!.reduce((s, r) => s + (r.overall_score ?? 0), 0) /
-            reports!.filter((r) => r.overall_score != null).length
-        )
-      : null;
+  const latest = reports?.[0] as SwingReport | undefined;
+  const currentFocus = latest ? getReportFocusLabel(latest) : null;
 
   return (
     <div className="min-h-screen">
@@ -61,17 +57,36 @@ export default async function DashboardPage() {
         </div>
 
         <div className="mt-8 grid gap-6 md:grid-cols-3">
-          <Card className="relative flex flex-col items-center">
-            <ScoreRing score={latestScore} label="Latest score" />
-          </Card>
-          <Card className="relative flex flex-col items-center">
-            <ScoreRing score={avgScore} label="Average score" />
+          <Card className="md:col-span-2">
+            <p className="text-sm text-[var(--color-muted)]">
+              {currentFocus ? "Your focus" : "Get started"}
+            </p>
+            {currentFocus ? (
+              <>
+                <p className="mt-2 text-2xl font-semibold">{currentFocus}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <StatusBadge status="current_focus" />
+                  {latest?.id && (
+                    <Link
+                      href={`/swings/${latest.id}`}
+                      className="text-sm text-[var(--color-accent)] hover:underline"
+                    >
+                      Open blueprint →
+                    </Link>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="mt-2 text-[var(--color-muted)]">
+                Upload a swing to get your kinesthetic blueprint and 7-day plan.
+              </p>
+            )}
           </Card>
           <Card>
-            <p className="text-sm text-[var(--color-muted)]">Total swings</p>
+            <p className="text-sm text-[var(--color-muted)]">Swings analyzed</p>
             <p className="mt-2 text-4xl font-semibold">{reports?.length ?? 0}</p>
             <Link href="/progress" className="mt-4 inline-block text-sm text-[var(--color-accent)] hover:underline">
-              View progress →
+              View history →
             </Link>
           </Card>
         </div>

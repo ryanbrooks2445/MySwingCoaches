@@ -4,12 +4,9 @@ import logging
 from pathlib import Path
 
 from app.frame_extractor import download_video, extract_frames
+from app.frame_sampler import sample_keyframe_indices
 from app.gemini_coach import generate_coaching_report
-from app.metrics import compute_metrics
-from app.persistence import mark_analysis_failed, persist_analysis_result, upload_checkpoint_frames
-from app.phase_detector import checkpoint_confidence, detect_checkpoints
-from app.pose_processor import process_video_frames
-from app.rules_engine import evaluate_rules
+from app.persistence import mark_analysis_failed, persist_analysis_result, upload_key_frames
 from app.schemas import AnalyzeRequest, CoachingReportSchema
 
 logger = logging.getLogger(__name__)
@@ -24,33 +21,22 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
         if len(frames) < 5:
             raise ValueError("Video too short for swing analysis (need at least 5 sampled frames)")
 
-        pose_sequence = process_video_frames(frames)
-        checkpoints = detect_checkpoints(pose_sequence, request.handedness)
-        phase_confidence = {
-            phase: checkpoint_confidence(pose_sequence, idx)
-            for phase, idx in checkpoints.items()
-        }
-
-        metrics = compute_metrics(pose_sequence, checkpoints, request.handedness)
-        rules_issues = evaluate_rules(metrics)
-
-        checkpoint_frames = upload_checkpoint_frames(
+        keyframe_indices = sample_keyframe_indices(len(frames))
+        key_frames = upload_key_frames(
             request.user_id,
             request.video_id,
             frames,
-            checkpoints,
-            pose_sequence,
-            phase_confidence,
+            keyframe_indices,
         )
 
-        report, ai_ok = generate_coaching_report(
-            skill_level=request.skill_level,
-            handedness=request.handedness,
-            camera_angle=request.camera_angle,
-            metrics=metrics,
-            detected_issues=rules_issues,
-            checkpoint_frames=checkpoint_frames,
+        report, ai_ok, gemini_meta = generate_coaching_report(
+            video_path=video_path,
+            frames=frames,
+            keyframe_indices=keyframe_indices,
             history_summary=request.history_summary,
+            player_name=request.player_name,
+            swing_number=request.swing_number,
+            player_context=request.player_context,
         )
 
         persist_analysis_result(
@@ -58,10 +44,9 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
             video_id=request.video_id,
             user_id=request.user_id,
             report=report,
-            metrics=metrics,
-            rules_issues=rules_issues,
-            checkpoint_frames=checkpoint_frames,
+            key_frames=key_frames,
             ai_narrative_available=ai_ok,
+            gemini_meta=gemini_meta,
         )
 
         return report

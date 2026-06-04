@@ -32,7 +32,7 @@ CREATE TABLE subscriptions (
   plan subscription_plan NOT NULL DEFAULT 'free',
   status subscription_status NOT NULL DEFAULT 'active',
   analyses_used INTEGER NOT NULL DEFAULT 0,
-  analyses_limit INTEGER NOT NULL DEFAULT 1,
+  analyses_limit INTEGER NOT NULL DEFAULT 5,
   period_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
@@ -183,7 +183,7 @@ BEGIN
   INSERT INTO profiles (id, display_name)
   VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)));
   INSERT INTO subscriptions (user_id, plan, analyses_limit)
-  VALUES (NEW.id, 'free', 1);
+  VALUES (NEW.id, 'free', 5);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

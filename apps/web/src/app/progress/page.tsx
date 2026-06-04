@@ -1,7 +1,9 @@
 import { AppNav } from "@/components/AppNav";
-import { ProgressChart } from "@/components/ProgressChart";
 import { Card } from "@/components/ui/Card";
+import { StatusBadge } from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
+import type { SwingReport } from "@/lib/types";
+import { getReportFocusLabel } from "@/lib/coaching";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -12,32 +14,22 @@ export default async function ProgressPage() {
 
   const { data: reports } = await supabase
     .from("swing_reports")
-    .select("id, overall_score, created_at, status")
+    .select("id, main_diagnosis, practice_plan, coaching_content, gemini_raw, created_at, status")
     .eq("user_id", user.id)
     .eq("status", "ready")
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(20);
-
-  const chartData = (reports ?? [])
-    .filter((r) => r.overall_score != null)
-    .map((r) => ({
-      date: new Date(r.created_at).toLocaleDateString(),
-      score: r.overall_score as number,
-    }));
 
   return (
     <div className="min-h-screen">
       <AppNav />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="text-3xl font-semibold">Progress</h1>
-        <p className="mt-1 text-[var(--color-muted)]">Track your swing scores over time</p>
-
-        <Card className="mt-8">
-          <ProgressChart data={chartData} />
-        </Card>
+        <h1 className="text-3xl font-semibold">Training history</h1>
+        <p className="mt-1 text-[var(--color-muted)]">
+          Your coaching blueprints and weekly focuses over time
+        </p>
 
         <section className="mt-10">
-          <h2 className="mb-4 text-xl font-semibold">History</h2>
           {!reports?.length ? (
             <Card className="text-center text-[var(--color-muted)]">No completed analyses yet.</Card>
           ) : (
@@ -46,24 +38,33 @@ export default async function ProgressPage() {
                 <thead className="bg-[var(--color-card)]">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Date</th>
-                    <th className="px-4 py-3 text-left font-medium">Score</th>
-                    <th className="px-4 py-3 text-left font-medium">Report</th>
+                    <th className="px-4 py-3 text-left font-medium">Weekly focus</th>
+                    <th className="px-4 py-3 text-left font-medium">Blueprint</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...(reports ?? [])].reverse().map((r) => (
-                    <tr key={r.id} className="border-t border-[var(--color-border)]">
-                      <td className="px-4 py-3">{new Date(r.created_at).toLocaleString()}</td>
-                      <td className="px-4 py-3 font-medium text-[var(--color-accent)]">
-                        {r.overall_score ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={`/swings/${r.id}`} className="text-[var(--color-accent)] hover:underline">
-                          View report
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {reports.map((r) => {
+                    const report = r as SwingReport;
+                    const focus = getReportFocusLabel(report);
+                    return (
+                      <tr key={r.id} className="border-t border-[var(--color-border)]">
+                        <td className="px-4 py-3">{new Date(r.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-3">
+                          {focus ? (
+                            <span className="font-medium text-[var(--color-accent)]">{focus}</span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href={`/swings/${r.id}`} className="inline-flex items-center gap-2 text-[var(--color-accent)] hover:underline">
+                            <StatusBadge status="current_focus" />
+                            Open
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

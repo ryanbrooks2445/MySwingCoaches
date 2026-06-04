@@ -10,4 +10,5 @@ export const DISCLAIMER =
 
 export const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
 export const MAX_VIDEO_DURATION_SEC = 30;
-export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime"];
+export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v"];
+export const ALLOWED_VIDEO_EXTENSIONS = ["mp4", "mov"];

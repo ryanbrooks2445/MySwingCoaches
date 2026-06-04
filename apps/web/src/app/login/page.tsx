@@ -22,7 +22,11 @@ export default function LoginPage() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (authError) {
-      setError(authError.message);
+      setError(
+        authError.message === "Email not confirmed"
+          ? "Email not confirmed. Check your inbox for the confirmation link, or ask your admin to confirm your account in Supabase."
+          : authError.message
+      );
       return;
     }
     router.push("/dashboard");

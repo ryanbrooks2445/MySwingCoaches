@@ -1,13 +1,13 @@
 # MySwingCoaches
 
-AI golf swing analysis platform. Upload a swing video, get pose-based metrics, rules-engine issue detection, and a Gemini-powered coaching report.
+AI golf swing analysis platform. Upload a swing video and get a Gemini-powered coaching report from full video analysis.
 
-**Architecture:** Video upload → OpenCV frame extraction → MediaPipe Pose → swing metrics / rules engine → Gemini coaching report → dashboard.
+**Architecture:** Video upload → OpenCV frame extraction → **Gemini multimodal video coaching** → dashboard.
 
 ## Prerequisites
 
 - Node.js 20+
-- Python 3.11+ (3.12 recommended; MediaPipe may not support 3.14 yet)
+- Python 3.11+ (3.12 recommended)
 - FFmpeg (for OpenCV video codecs)
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (optional for local stack)
 - Google AI Studio API key ([Gemini](https://aistudio.google.com/apikey))
@@ -17,7 +17,7 @@ AI golf swing analysis platform. Upload a swing video, get pose-based metrics, r
 ```
 MySwingCoaches/
 ├── apps/web/              # Next.js App Router frontend
-├── analysis-service/      # FastAPI + OpenCV + MediaPipe + Gemini
+├── analysis-service/      # FastAPI + OpenCV + Gemini
 ├── supabase/migrations/   # Postgres schema + RLS + storage
 ├── packages/shared-types/ # Shared TypeScript types
 └── docs/                  # Production TODOs
@@ -106,7 +106,7 @@ python scripts/run_local_analysis.py /path/to/swing.mp4
 2. Upload MP4 or MOV on `/upload`
 3. Video stored in Supabase Storage; `swing_reports` created with status `processing`
 4. Next.js calls FastAPI `/analyze` with signed video URL
-5. FastAPI: OpenCV frames → MediaPipe Pose → metrics → rules engine → Gemini JSON
+5. FastAPI: OpenCV frames → Gemini video coaching JSON
 6. Results persisted to Supabase; user views report at `/swings/[id]`
 
 ## Coach admin
@@ -131,10 +131,9 @@ All reports include:
 
 ## Known MVP limitations
 
-- Checkpoint detection uses heuristics (not ML) — may mis-phase some videos
-- Ideal swing comparison uses **labeled placeholders** — real pro model library is TODO
+- Key frames are evenly sampled from the video (not ML phase detection)
 - Analysis runs synchronously — long videos may timeout (max 100MB recommended, ~30s)
-- Gemini receives structured data + frame URLs, not raw video bytes
+- Coaching is entirely from Gemini watching your video — not a launch monitor or certified PGA analysis
 
 ## License
 
