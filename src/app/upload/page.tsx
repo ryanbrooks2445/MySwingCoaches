@@ -123,7 +123,7 @@ export default function UploadPage() {
       const message = err instanceof Error ? err.message : "Something went wrong";
       if (message === "Failed to fetch") {
         setError(
-          "Network error — is the dev server running? Run: cd apps/web && npm run dev"
+          "Network error — is the dev server running? Run: npm run dev"
         );
       } else {
         setError(message);

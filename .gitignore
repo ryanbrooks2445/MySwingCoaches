@@ -12,10 +12,12 @@ __pycache__/
 analysis-service/.env
 
 # Next.js
+.next/
+.next-stale-*/
+out/
+tsconfig.tsbuildinfo
 apps/web/.next/
-apps/web/.next-stale-*/
-apps/web/out/
-apps/web/tsconfig.tsbuildinfo
+apps/web/node_modules/
 
 # Python
 analysis-service/.pytest_cache/
