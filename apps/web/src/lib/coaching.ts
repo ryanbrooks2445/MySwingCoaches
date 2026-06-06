@@ -35,7 +35,7 @@ export function parseCoachingContent(report: SwingReport): CoachingContent | nul
     return null;
   };
 
-  return tryParse(report.coaching_content) ?? tryParse(report.gemini_raw as CoachingContent);
+  return tryParse(report.coaching_content) ?? tryParse(report.gemini_raw as unknown as CoachingContent);
 }
 
 function diagnosisToSimplified(d: SwingDiagnosisEngine, content: CoachingContent): SimplifiedSwingReport {
@@ -50,8 +50,8 @@ function diagnosisToSimplified(d: SwingDiagnosisEngine, content: CoachingContent
     ? [
         {
           name: d.one_drill.name,
-          why_it_helps: d.one_drill.why,
-          how_to_do_it: d.one_drill.how,
+          why_it_helps: d.one_drill.success_metric,
+          how_to_do_it: d.one_drill.instructions,
         },
       ]
     : [];
@@ -65,7 +65,7 @@ function diagnosisToSimplified(d: SwingDiagnosisEngine, content: CoachingContent
     advanced_details: {
       root_cause: d.root_cause,
       symptom: d.symptom,
-      evidence_metrics: d.evidence?.map((e) => `${e.label}: ${e.value}`) ?? [],
+      evidence_metrics: d.evidence?.map((e) => `${e.metric}: ${e.observed}`) ?? [],
       secondary_fix: d.fix_priority.secondary,
       optional_fix: d.fix_priority.optional,
       chain_reaction: d.chain_reaction,

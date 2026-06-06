@@ -80,7 +80,7 @@ export default function CoachReviewDetailPage() {
                 Feels: {feel.body_part_cue} · {feel.spatial_cue}
               </p>
               <p className="text-sm text-[var(--color-muted)]">
-                Weekly focus: {coaching.roadmap.weekly_focus.replace(/\*\*/g, "")}
+                Weekly focus: {coaching.roadmap?.weekly_focus?.replace(/\*\*/g, "") ?? "—"}
               </p>
             </div>
           ) : (

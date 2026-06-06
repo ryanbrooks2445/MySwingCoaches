@@ -33,6 +33,7 @@ export interface SwingVideo {
   size_bytes: number;
   duration_sec: number | null;
   swing_mode?: import("@/lib/pricing").SwingMode;
+  camera_angle?: string | null;
   status: VideoStatus;
   created_at: string;
 }
@@ -206,6 +207,10 @@ export interface CoachingContent {
   blueprint?: KinestheticBlueprint;
   roadmap?: AccountabilityPlan;
   diagnosis_engine?: SwingDiagnosisEngine | null;
+  /** @deprecated Dev / legacy reports */
+  improvement_engine?: Record<string, unknown> | null;
+  /** @deprecated Dev / legacy reports */
+  pga_coach_analysis?: Record<string, unknown> | null;
   next_upload_focus: string;
   disclaimer: string;
 }
