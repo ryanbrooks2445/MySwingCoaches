@@ -24,7 +24,7 @@ export default function LoginPage() {
     if (authError) {
       setError(
         authError.message === "Email not confirmed"
-          ? "Email not confirmed. Check your inbox for the confirmation link, then try again."
+          ? "Email not confirmed. Check your inbox for the confirmation link, or ask your admin to confirm your account in Supabase."
           : authError.message
       );
       return;

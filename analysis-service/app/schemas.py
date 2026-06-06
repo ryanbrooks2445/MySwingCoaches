@@ -10,22 +10,17 @@ DISCLAIMER = (
 )
 
 CHECKPOINTS = [
-    "setup_address",
+    "address",
     "takeaway",
-    "club_parallel_back",
-    "lead_arm_parallel_back",
-    "top_of_backswing",
-    "transition",
-    "lead_arm_parallel_down",
-    "shaft_parallel_down",
+    "top",
+    "downswing",
     "impact",
-    "release",
     "finish",
 ]
 
 CHECKPOINTS_BY_MODE: dict[SwingMode, list[str]] = {
     "full_swing": CHECKPOINTS,
-    "chipping": ["address", "takeaway", "top", "downswing", "impact", "finish"],
+    "chipping": ["setup", "backswing", "downswing", "impact", "finish"],
     "putting": ["address", "backstroke", "forward", "impact", "follow_through", "finish"],
 }
 
@@ -33,178 +28,6 @@ CHECKPOINTS_BY_MODE: dict[SwingMode, list[str]] = {
 class AnalysisBullet(BaseModel):
     title: str = Field(description="Bold label e.g. 'Excellent Lower Body Action' or 'The Setup: The Sitting Stance'")
     detail: str = Field(description="2-4 sentences. Specific to THIS swing video. Plain English.")
-
-
-class SwingMetricEvidence(BaseModel):
-    checkpoint: str
-    metric: str
-    observed: str
-    expected: str
-    interpretation: str | None = None
-    confidence: float = Field(ge=0, le=1)
-
-
-class DrillPrescription(BaseModel):
-    name: str
-    instructions: str
-    sets_reps: str
-    success_metric: str
-
-
-class PgaDrill(BaseModel):
-    name: str
-    why_it_helps: str
-    how_to_do_it: str
-
-
-class PgaCoachAnalysis(BaseModel):
-    pga_analysis: str
-    main_fix: str
-    tips_and_feels: list[str] = Field(min_length=3, max_length=3)
-    drills: list[PgaDrill] = Field(min_length=2, max_length=2)
-    next_upload_focus: str
-    confidence_note: str
-
-
-class FixItDrill(BaseModel):
-    name: str
-    steps: list[str] = Field(min_length=3, max_length=5)
-    dose: str
-    success_check: str
-
-
-class AdvancedDetails(BaseModel):
-    first_breakdown_checkpoint: str
-    root_cause: str
-    symptom: str
-    confidence_note: str
-    camera_angle_limitations: str
-    evidence_plain_english: list[str] = Field(default_factory=list)
-    raw_metrics: dict = Field(default_factory=dict)
-
-
-class CoachSummaryReport(BaseModel):
-    coach_summary: str
-    whats_working: list[str] = Field(min_length=1, max_length=3)
-    main_swing_leak: str
-    why_it_matters: str
-    feel_this_week: str
-    what_to_feel: list[str] = Field(min_length=1, max_length=3)
-    fix_it_drill: FixItDrill
-    practice_plan_7_day: list[str] = Field(min_length=3, max_length=4)
-    next_upload_goal: str
-    advanced_details: AdvancedDetails
-
-
-ImpactLevel = Literal["low", "medium", "high"]
-ConfidenceLevel = Literal["high", "medium", "low"]
-
-
-class EstimatedScoreImpact(BaseModel):
-    level: ImpactLevel
-    shots_at_risk: str = Field(description="Plain-English estimate, not fake precision.")
-    explanation: str
-
-
-class ImprovementFixPriority(BaseModel):
-    fix_first: str
-    fix_second: str
-    ignore_for_now: list[str] = Field(min_length=1, max_length=3)
-    why_this_order: str
-
-
-class ImprovementPracticePlan(BaseModel):
-    practice_goal: str
-    tomorrow_plan: list[str] = Field(min_length=3, max_length=5)
-    primary_drill: PgaDrill
-    feels: list[str] = Field(min_length=2, max_length=3)
-    dosage: str
-    success_check: str
-
-
-class ImprovementBenchmark(BaseModel):
-    metric: str
-    current_state: str
-    target_next_upload: str
-    upload_instruction: str
-
-
-class ProgressMetric(BaseModel):
-    name: str
-    current_score: int = Field(ge=0, le=100)
-    previous_score: int | None = Field(default=None, ge=0, le=100)
-    change: int | None = None
-    interpretation: str
-
-
-class ProgressScore(BaseModel):
-    overall: int = Field(ge=0, le=100)
-    previous_overall: int | None = Field(default=None, ge=0, le=100)
-    trend: Literal["first_upload", "improved", "same", "regressed", "unknown"]
-    summary: str
-    metrics: list[ProgressMetric] = Field(min_length=3, max_length=6)
-
-
-class ImprovementConfidence(BaseModel):
-    level: ConfidenceLevel
-    why: str
-    limiting_factors: list[str] = Field(default_factory=list)
-    evidence_used: list[str] = Field(default_factory=list)
-
-
-class PracticeValueScore(BaseModel):
-    contact: ImpactLevel
-    direction: ImpactLevel
-    consistency: ImpactLevel
-    distance: ImpactLevel
-    summary: str
-
-
-class ImprovementEngine(BaseModel):
-    main_diagnosis: str
-    expected_ball_flight_consequence: str
-    estimated_score_impact: EstimatedScoreImpact
-    fix_priority: ImprovementFixPriority
-    practice_plan: ImprovementPracticePlan
-    improvement_benchmark: ImprovementBenchmark
-    progress_score: ProgressScore
-    confidence: ImprovementConfidence
-    practice_value_score: PracticeValueScore
-
-
-class SwingIssueDiagnosis(BaseModel):
-    symptom: str
-    root_cause: str
-    first_breakdown_checkpoint: str
-    evidence: list[SwingMetricEvidence] = Field(default_factory=list)
-    chain_reaction: str
-    fix_priority: int = Field(ge=1, le=3)
-    why_this_comes_first: str
-    recommended_feel: str
-    drill: DrillPrescription
-    next_video_focus: str
-
-
-class FixPriorityBlock(BaseModel):
-    primary: str
-    secondary: str
-    optional: str
-
-
-class SwingDiagnosisEngine(BaseModel):
-    main_diagnosis: str
-    skill_level_note: str
-    first_breakdown_checkpoint: str
-    root_cause: str
-    symptom: str
-    chain_reaction: str
-    fix_priority: FixPriorityBlock
-    evidence: list[SwingMetricEvidence] = Field(default_factory=list)
-    what_to_feel: str
-    one_drill: DrillPrescription
-    next_upload_focus: str
-    coach_warning: str
-    issues: list[SwingIssueDiagnosis] = Field(default_factory=list)
 
 
 class ProFix(BaseModel):
@@ -231,8 +54,8 @@ class FeelBlueprintDiagnostic(BaseModel):
         min_length=2,
         max_length=4,
         description=(
-            "THE WEAKNESSES (The Flaws) — numbered chain: setup flaw → takeaway compensation → "
-            "downswing rescue. Each title can include a nickname in quotes."
+            "THE MISSING PIECE chain (never say flaw/fault) — setup link → takeaway → downswing. "
+            "Titles use unlocked-potential language; details empower, not shame."
         ),
     )
     current_ceiling: str = Field(
@@ -300,30 +123,110 @@ class AccountabilityPlan(BaseModel):
     day_7_test: str = Field(description="One sentence pass/fail before next upload")
 
 
+class DrillSummary(BaseModel):
+    name: str = Field(description="Drill name — specific to this swing, not generic")
+    why_it_helps: str = Field(description="1-2 sentences tied to pga_analysis and main_fix")
+    how_to_do_it: str = Field(description="1-2 sentences — reps, setup, pass/fail")
+
+
+class DiagnosticCheckpointGrade(BaseModel):
+    checkpoint: str = Field(
+        description="Short label e.g. 'Setup: weight on heels' or 'Backswing: arm lift'"
+    )
+    grade: Literal["optimal", "compensation", "constraint", "not_visible"] = Field(
+        description="Internal grade only — never show raw grade labels in user-facing fields"
+    )
+    observation: str = Field(
+        description="One line evidence from THIS video. Internal/coach view."
+    )
+
+
+class AdvancedDetails(BaseModel):
+    report_mode: Literal["development", "maintenance"] = Field(
+        default="development",
+        description="maintenance = elite baseline, no forced flaw; development = real unlock needed",
+    )
+    foundational_missing_piece: str = Field(
+        description=(
+            "Development: earliest breakdown. Maintenance: 'None — maintain current elite baseline'."
+        )
+    )
+    profile_constraints_applied: str = Field(
+        default="",
+        description="How Human Blueprint (age, injuries, mobility, years playing) shaped the plan.",
+    )
+    diagnostic_checkpoints: list[DiagnosticCheckpointGrade] = Field(
+        default_factory=list,
+        max_length=20,
+        description="8-20 key graded checkpoints when video analysis succeeds. Internal only.",
+    )
+    root_cause: str = Field(description="Technical root — aligns with foundational_missing_piece")
+    symptom: str = Field(description="What the golfer sees (ball flight, contact)")
+    evidence_metrics: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Short checkpoint observations e.g. 'Address: weight on heels'",
+    )
+    secondary_fix: str = Field(description="Alternate fix — hidden from main UI")
+    optional_fix: str = Field(description="Nice-to-have — hidden from main UI")
+    chain_reaction: str = Field(description="Hidden technical: missing link → compensation → miss")
+    why_it_caused_the_miss: str = Field(description="Plain-English miss explanation")
+    confidence_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="0-1 model confidence in the diagnosis",
+    )
+    next_checkpoint: str = Field(
+        default="",
+        description="Phase to evaluate on next upload (e.g. takeaway, impact)",
+    )
+
+
 class CoachingReportSchema(BaseModel):
     personalized_greeting: str = Field(
         description=(
-            "1-2 short sentences. Use player's first name. Reference their swing history "
-            "(first upload vs returning, prior focus if any). Hook them to open the app again. Max 35 words."
+            "RALLYING CRY. First name + aggressive praise for athletic traits seen in video. "
+            "Elite athlete tone. Max 35 words. No negative framing."
         )
     )
-    feel_blueprint: FeelBlueprintDiagnostic
+    pga_analysis: str = Field(
+        description=(
+            "USER-FACING deep dive in plain English. Four sections with plain-text titles on their own line "
+            "(NO markdown #): What's working, Setup to finish, then either "
+            "The missing piece + What changes when you unlock it (development) OR "
+            "What to keep doing + Your ceiling at this level (maintenance). "
+            "Athletic Upside tone. Use **bold** only for phase labels in Setup to finish."
+        )
+    )
+    main_fix: str = Field(
+        description=(
+            "USER-FACING: ONE primary unlock — what to add or hand off (hips, chest, path). "
+            "2-3 sentences. Breakthrough energy, not corrective shame."
+        )
+    )
+    tips_and_feels: list[str] = Field(
+        min_length=2,
+        max_length=4,
+        description=(
+            "USER-FACING: Tactile feels/tricks to execute the fix. "
+            "Start with 'Feel...' when natural. No jargon. No repeated ideas."
+        ),
+    )
+    drills: list[DrillSummary] = Field(
+        max_length=3,
+        description="USER-FACING: 0-3 drills. Empty OK in maintenance mode.",
+    )
+    next_swing_check: str = Field(
+        description="USER-FACING: One clear thing to film or look for on next upload."
+    )
+    advanced_details: AdvancedDetails
+    feel_blueprint: FeelBlueprintDiagnostic | None = Field(
+        default=None,
+        description="Optional deep narrative storage — leave null; use advanced_details instead.",
+    )
     blueprint: KinestheticBlueprint
     roadmap: AccountabilityPlan
-    pga_coach_analysis: PgaCoachAnalysis | None = Field(
-        default=None,
-        description="Skimmable PGA-coach read in the requested user-facing JSON structure.",
-    )
-    coach_summary_report: CoachSummaryReport | None = Field(
-        default=None,
-        description="Short paid-coach report for the public UI. Technical evidence belongs in advanced_details only.",
-    )
-    improvement_engine: ImprovementEngine
-    diagnosis_engine: SwingDiagnosisEngine | None = Field(
-        default=None,
-        description="Cause-and-effect swing diagnosis with first-breakdown evidence and one prioritized prescription.",
-    )
-    next_upload_focus: str = Field(description="One filming tip, max 20 words")
+    next_upload_focus: str = Field(description="Same as next_swing_check or filming tip, max 25 words")
     disclaimer: str
 
 
@@ -339,7 +242,7 @@ class AnalyzeRequest(BaseModel):
     video_id: str
     user_id: str
     video_url: str
-    video_mime_type: str | None = None
+    trace_id: str | None = None
     swing_mode: SwingMode = "full_swing"
     history_summary: str | None = None
     player_name: str | None = None
@@ -348,12 +251,3 @@ class AnalyzeRequest(BaseModel):
     player_age: int | None = None
     years_playing: int | None = None
     physical_limitations: str | None = None
-    camera_angle: str | None = None
-    handedness: str | None = None
-    skill_level: str | None = None
-    ball_flight: str | None = None
-    user_goal: str | None = None
-    club_used: str | None = None
-    practice_availability: str | None = None
-    handicap: str | None = None
-    prior_progress: dict | None = None

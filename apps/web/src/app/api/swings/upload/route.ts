@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { requireGolferProfile } from "@/lib/require-golfer-profile";
 import { canRunAnalysis } from "@/lib/subscription";
+import { logTrace } from "@/lib/trace";
 import { ALLOWED_VIDEO_TYPES, MAX_VIDEO_SIZE_BYTES } from "@/lib/utils";
 import { randomUUID } from "crypto";
 
@@ -17,12 +18,6 @@ function guessMimeType(file: File): string {
   const ext = file.name.split(".").pop()?.toLowerCase();
   if (ext === "mov") return "video/quicktime";
   return "video/mp4";
-}
-
-function cleanText(value: FormDataEntryValue | null): string | null {
-  if (typeof value !== "string") return null;
-  const cleaned = value.trim();
-  return cleaned ? cleaned.slice(0, 300) : null;
 }
 
 export async function POST(request: NextRequest) {
@@ -45,17 +40,6 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   const swingMode = String(formData.get("swingMode") || "full_swing");
-  const cameraAngle = cleanText(formData.get("cameraAngle")) || "unknown";
-  const allowedCameraAngles = ["face-on", "down-the-line", "unknown"];
-  const intake = {
-    ballFlight: cleanText(formData.get("ballFlight")),
-    userGoal: cleanText(formData.get("userGoal")),
-    clubUsed: cleanText(formData.get("clubUsed")),
-    practiceAvailability: cleanText(formData.get("practiceAvailability")),
-    handicap: cleanText(formData.get("handicap")),
-    cameraAngle: allowedCameraAngles.includes(cameraAngle) ? cameraAngle : "unknown",
-    handedness: cleanText(formData.get("handedness")),
-  };
   const allowedModes = ["full_swing", "chipping", "putting"];
 
   if (!file) {
@@ -75,10 +59,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "File must be under 100MB" }, { status: 400 });
   }
 
+  const traceId = randomUUID();
   const videoId = randomUUID();
   const reportId = randomUUID();
   const ext = file.name.split(".").pop() || "mp4";
   const storagePath = `${user.id}/${videoId}/swing.${ext}`;
+
+  logTrace("upload_started", {
+    trace_id: traceId,
+    user_id: user.id,
+    report_id: reportId,
+    status: "started",
+  });
 
   const serviceClient = createServiceClient();
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -91,8 +83,23 @@ export async function POST(request: NextRequest) {
     });
 
   if (uploadError) {
+    logTrace("upload_complete", {
+      trace_id: traceId,
+      user_id: user.id,
+      report_id: reportId,
+      status: "error",
+      error: uploadError.message,
+    });
     return NextResponse.json({ error: uploadError.message }, { status: 500 });
   }
+
+  logTrace("upload_complete", {
+    trace_id: traceId,
+    user_id: user.id,
+    report_id: reportId,
+    status: "ok",
+    storage_path: storagePath,
+  });
 
   const { error: videoError } = await serviceClient.from("swing_videos").insert({
     id: videoId,
@@ -102,7 +109,6 @@ export async function POST(request: NextRequest) {
     mime_type: mimeType,
     size_bytes: file.size,
     swing_mode: swingMode,
-    camera_angle: intake.cameraAngle,
     status: "processing",
   });
 
@@ -115,17 +121,32 @@ export async function POST(request: NextRequest) {
     user_id: user.id,
     video_id: videoId,
     swing_mode: swingMode,
-    pose_landmarks: { intake },
     status: "processing",
   });
 
   if (reportError) {
+    logTrace("db_row_created", {
+      trace_id: traceId,
+      user_id: user.id,
+      report_id: reportId,
+      status: "error",
+      error: reportError.message,
+    });
     return NextResponse.json({ error: reportError.message }, { status: 500 });
   }
+
+  logTrace("db_row_created", {
+    trace_id: traceId,
+    user_id: user.id,
+    report_id: reportId,
+    status: "processing",
+    video_id: videoId,
+  });
 
   return NextResponse.json({
     videoId,
     reportId,
     storagePath,
+    traceId,
   });
 }

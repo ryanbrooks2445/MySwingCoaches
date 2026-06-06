@@ -9,6 +9,7 @@ from supabase import create_client
 from app.config import get_settings
 from app.frame_extractor import save_frame_jpeg
 from app.schemas import CoachingReportSchema, KeyFrame
+from app.trace_log import log_trace
 
 logger = logging.getLogger(__name__)
 
@@ -66,42 +67,17 @@ def persist_analysis_result(
     report: CoachingReportSchema,
     key_frames: list[KeyFrame],
     ai_narrative_available: bool,
-    metric_payload: dict | None = None,
     gemini_meta: dict | None = None,
+    trace_id: str | None = None,
 ) -> None:
     client = get_supabase_client()
 
-    key_frame_urls = [
-        {"phase": f.phase, "url": f.url, "storage_path": f.storage_path}
-        for f in key_frames
-    ]
+    key_frame_urls = [{"phase": f.phase, "url": f.url} for f in key_frames]
     coaching_content = report.model_dump()
-    pose_payload = metric_payload or {}
 
     gemini_raw = {
         **coaching_content,
         "_meta": gemini_meta or {},
-        "_debug": {
-            "gemini_input": {
-                "prompt": (gemini_meta or {}).get("prompt"),
-                "frame_count": (gemini_meta or {}).get("frame_count"),
-                "frame_timestamps": (gemini_meta or {}).get("frame_timestamps"),
-                "frame_labels": (gemini_meta or {}).get("frame_labels"),
-                "frames": (gemini_meta or {}).get("frames"),
-                "full_video_sent": (gemini_meta or {}).get("full_video_sent"),
-                "video_attached": (gemini_meta or {}).get("video_attached"),
-                "model_name": (gemini_meta or {}).get("model_used"),
-                "input_parts": (gemini_meta or {}).get("input_parts"),
-                "camera_angle_detected": (gemini_meta or {}).get("camera_angle_detected"),
-            },
-            "gemini_raw_response": (gemini_meta or {}).get("gemini_raw_response"),
-            "frontend_display_source": coaching_content,
-            "processing_time_ms": (gemini_meta or {}).get("processing_time_ms"),
-            "processing_time_sec": (gemini_meta or {}).get("processing_time_sec"),
-            "camera_angle_detection": (gemini_meta or {}).get("camera_angle_detected"),
-            "confidence_scores": (gemini_meta or {}).get("confidence_scores"),
-            "hybrid_vision_evidence": (gemini_meta or {}).get("hybrid_vision_evidence"),
-        },
     }
 
     client.table("swing_reports").update({
@@ -112,14 +88,14 @@ def persist_analysis_result(
         "downswing_score": None,
         "impact_score": None,
         "finish_score": None,
-        "main_diagnosis": report.improvement_engine.main_diagnosis,
+        "main_diagnosis": report.pga_analysis[:500],
         "swing_strengths": [],
-        "practice_plan": report.improvement_engine.practice_plan.practice_goal,
-        "next_upload_focus": report.improvement_engine.improvement_benchmark.target_next_upload,
+        "practice_plan": report.main_fix[:500],
+        "next_upload_focus": report.next_swing_check or report.next_upload_focus,
         "disclaimer": report.disclaimer,
         "coaching_content": coaching_content,
         "key_frame_urls": key_frame_urls,
-        "pose_landmarks": pose_payload,
+        "pose_landmarks": {},
         "gemini_raw": gemini_raw,
         "ai_narrative_available": ai_narrative_available,
         "error_message": (gemini_meta or {}).get("error") if not ai_narrative_available else None,
@@ -134,6 +110,15 @@ def persist_analysis_result(
     if sub.data:
         used = sub.data.get("analyses_used", 0) + 1
         client.table("subscriptions").update({"analyses_used": used}).eq("user_id", user_id).execute()
+
+    log_trace(
+        "report_saved",
+        trace_id=trace_id,
+        user_id=user_id,
+        report_id=analysis_id,
+        status="ready",
+        ai_narrative_available=ai_narrative_available,
+    )
 
 
 def mark_analysis_failed(analysis_id: str, video_id: str, error: str) -> None:

@@ -33,7 +33,6 @@ export interface SwingVideo {
   size_bytes: number;
   duration_sec: number | null;
   swing_mode?: import("@/lib/pricing").SwingMode;
-  camera_angle?: "face-on" | "down-the-line" | "unknown" | null;
   status: VideoStatus;
   created_at: string;
 }
@@ -85,126 +84,6 @@ export interface DrillPrescription {
   instructions: string;
   sets_reps: string;
   success_metric: string;
-}
-
-export interface PgaDrill {
-  name: string;
-  why_it_helps: string;
-  how_to_do_it: string;
-}
-
-export interface PgaCoachAnalysis {
-  pga_analysis: string;
-  main_fix: string;
-  tips_and_feels: string[];
-  drills: PgaDrill[];
-  next_upload_focus: string;
-  confidence_note: string;
-}
-
-export interface FixItDrill {
-  name: string;
-  steps: string[];
-  dose: string;
-  success_check: string;
-}
-
-export interface AdvancedDetails {
-  first_breakdown_checkpoint: string;
-  root_cause: string;
-  symptom: string;
-  confidence_note: string;
-  camera_angle_limitations: string;
-  evidence_plain_english: string[];
-  raw_metrics: Record<string, unknown>;
-}
-
-export interface CoachSummaryReport {
-  coach_summary: string;
-  whats_working: string[];
-  main_swing_leak: string;
-  why_it_matters: string;
-  feel_this_week: string;
-  what_to_feel: string[];
-  fix_it_drill: FixItDrill;
-  practice_plan_7_day: string[];
-  next_upload_goal: string;
-  advanced_details: AdvancedDetails;
-}
-
-export type ImpactLevel = "low" | "medium" | "high";
-export type ConfidenceLevel = "high" | "medium" | "low";
-
-export interface EstimatedScoreImpact {
-  level: ImpactLevel;
-  shots_at_risk: string;
-  explanation: string;
-}
-
-export interface ImprovementFixPriority {
-  fix_first: string;
-  fix_second: string;
-  ignore_for_now: string[];
-  why_this_order: string;
-}
-
-export interface ImprovementPracticePlan {
-  practice_goal: string;
-  tomorrow_plan: string[];
-  primary_drill: PgaDrill;
-  feels: string[];
-  dosage: string;
-  success_check: string;
-}
-
-export interface ImprovementBenchmark {
-  metric: string;
-  current_state: string;
-  target_next_upload: string;
-  upload_instruction: string;
-}
-
-export interface ProgressMetric {
-  name: string;
-  current_score: number;
-  previous_score?: number | null;
-  change?: number | null;
-  interpretation: string;
-}
-
-export interface ProgressScore {
-  overall: number;
-  previous_overall?: number | null;
-  trend: "first_upload" | "improved" | "same" | "regressed" | "unknown";
-  summary: string;
-  metrics: ProgressMetric[];
-}
-
-export interface ImprovementConfidence {
-  level: ConfidenceLevel;
-  why: string;
-  limiting_factors: string[];
-  evidence_used: string[];
-}
-
-export interface PracticeValueScore {
-  contact: ImpactLevel;
-  direction: ImpactLevel;
-  consistency: ImpactLevel;
-  distance: ImpactLevel;
-  summary: string;
-}
-
-export interface ImprovementEngine {
-  main_diagnosis: string;
-  expected_ball_flight_consequence: string;
-  estimated_score_impact: EstimatedScoreImpact;
-  fix_priority: ImprovementFixPriority;
-  practice_plan: ImprovementPracticePlan;
-  improvement_benchmark: ImprovementBenchmark;
-  progress_score: ProgressScore;
-  confidence: ImprovementConfidence;
-  practice_value_score: PracticeValueScore;
 }
 
 export interface SwingDiagnosisIssue {
@@ -276,16 +155,56 @@ export interface AccountabilityPlan {
   day_7_test: string;
 }
 
+export interface DrillSummary {
+  name: string;
+  why_it_helps: string;
+  how_to_do_it: string;
+}
+
+export interface DiagnosticCheckpointGrade {
+  checkpoint: string;
+  grade: "optimal" | "compensation" | "constraint" | "not_visible";
+  observation: string;
+}
+
+export interface AdvancedDetails {
+  report_mode?: "development" | "maintenance";
+  foundational_missing_piece?: string;
+  profile_constraints_applied?: string;
+  diagnostic_checkpoints?: DiagnosticCheckpointGrade[];
+  root_cause: string;
+  symptom: string;
+  evidence_metrics: string[];
+  secondary_fix: string;
+  optional_fix: string;
+  chain_reaction: string;
+  why_it_caused_the_miss: string;
+  confidence_score: number;
+  next_checkpoint?: string;
+}
+
+export interface SimplifiedSwingReport {
+  pga_analysis: string;
+  main_fix: string;
+  tips_and_feels: string[];
+  drills: DrillSummary[];
+  next_swing_check: string;
+  advanced_details: AdvancedDetails;
+}
+
 export interface CoachingContent {
   personalized_greeting: string;
+  pga_analysis?: string;
+  main_fix?: string;
+  tips_and_feels?: string[];
+  drills?: DrillSummary[];
+  next_swing_check?: string;
+  advanced_details?: AdvancedDetails;
   feel_blueprint?: FeelBlueprintDiagnostic;
   /** @deprecated Legacy reports only */
   diagnostic?: DiagnosticTruth;
-  blueprint: KinestheticBlueprint;
-  roadmap: AccountabilityPlan;
-  pga_coach_analysis?: PgaCoachAnalysis | null;
-  coach_summary_report?: CoachSummaryReport | null;
-  improvement_engine?: ImprovementEngine | null;
+  blueprint?: KinestheticBlueprint;
+  roadmap?: AccountabilityPlan;
   diagnosis_engine?: SwingDiagnosisEngine | null;
   next_upload_focus: string;
   disclaimer: string;
@@ -321,7 +240,6 @@ export interface SwingReport {
 export interface KeyFrameUrl {
   phase: string;
   url: string;
-  storage_path?: string;
   confidence?: number;
 }
 
@@ -362,4 +280,11 @@ export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
   serious: -1,
 };
 
-export { PRICE_PER_ANALYSIS, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+export {
+  PRICE_FIRST_ANALYSIS,
+  PRICE_FIRST_ANALYSIS_DISPLAY,
+  PRICE_PER_ANALYSIS,
+  PRICE_PER_ANALYSIS_DISPLAY,
+  getNextAnalysisPrice,
+  getNextAnalysisPriceDisplay,
+} from "@/lib/pricing";

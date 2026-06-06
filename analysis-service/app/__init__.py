@@ -1,1 +1,0 @@
-"""MySwingCoaches analysis service."""

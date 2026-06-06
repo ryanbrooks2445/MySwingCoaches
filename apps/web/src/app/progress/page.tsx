@@ -1,4 +1,5 @@
 import { AppNav } from "@/components/AppNav";
+import { ClearSwingHistoryButton, DeleteSwingButton } from "@/components/DeleteSwingButton";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
@@ -24,10 +25,15 @@ export default async function ProgressPage() {
     <div className="min-h-screen">
       <AppNav />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="text-3xl font-semibold">Training History</h1>
-        <p className="mt-1 text-[var(--color-muted)]">
-          Your coaching analyses and weekly focus areas over time
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold">Training history</h1>
+            <p className="mt-1 text-[var(--color-muted)]">
+              Your coaching blueprints and weekly focuses over time
+            </p>
+          </div>
+          {reports && reports.length > 0 && <ClearSwingHistoryButton />}
+        </div>
 
         <section className="mt-10">
           {!reports?.length ? (
@@ -38,8 +44,9 @@ export default async function ProgressPage() {
                 <thead className="bg-[var(--color-card)]">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Date</th>
-                    <th className="px-4 py-3 text-left font-medium">Weekly Focus</th>
-                    <th className="px-4 py-3 text-left font-medium">Analysis</th>
+                    <th className="px-4 py-3 text-left font-medium">Weekly focus</th>
+                    <th className="px-4 py-3 text-left font-medium">Blueprint</th>
+                    <th className="px-4 py-3 text-right font-medium"> </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -61,6 +68,9 @@ export default async function ProgressPage() {
                             <StatusBadge status="current_focus" />
                             Open
                           </Link>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <DeleteSwingButton reportId={r.id} />
                         </td>
                       </tr>
                     );

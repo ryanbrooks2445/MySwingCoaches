@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
 import { analysisCreditsRemaining } from "@/lib/subscription";
-import { PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+import { getNextAnalysisPriceDisplay } from "@/lib/pricing";
 import { getReportFocusLabel } from "@/lib/coaching";
 import type { SwingReport } from "@/lib/types";
 import { redirect } from "next/navigation";
@@ -52,20 +52,27 @@ export default async function DashboardPage() {
                 ? (() => {
                     const remaining = analysisCreditsRemaining(subscription);
                     if (remaining === "unlimited") return "Unlimited analyses";
-                    return `${remaining} upload${remaining === 1 ? "" : "s"} ready · ${PRICE_PER_ANALYSIS_DISPLAY} each`;
+                    if (remaining > 0) {
+                      return `${remaining} upload${remaining === 1 ? "" : "s"} ready`;
+                    }
+                    const price = getNextAnalysisPriceDisplay(
+                      subscription.analyses_used,
+                      subscription.analyses_limit
+                    );
+                    return `Buy your next analysis — ${price}`;
                   })()
-                : `Buy an analysis — ${PRICE_PER_ANALYSIS_DISPLAY}`}
+                : "Create your profile, then buy your first analysis"}
             </p>
           </div>
           <Link href="/upload">
-            <Button>Upload Swing</Button>
+            <Button>Upload swing</Button>
           </Link>
         </div>
 
         <div className="mt-8 grid gap-6 md:grid-cols-3">
           <Card className="md:col-span-2">
             <p className="text-sm text-[var(--color-muted)]">
-              {currentFocus ? "Your Focus" : "Get Started"}
+              {currentFocus ? "Your focus" : "Get started"}
             </p>
             {currentFocus ? (
               <>
@@ -77,19 +84,19 @@ export default async function DashboardPage() {
                       href={`/swings/${latest.id}`}
                       className="text-sm text-[var(--color-accent)] hover:underline"
                     >
-                      Open analysis →
+                      Open blueprint →
                     </Link>
                   )}
                 </div>
               </>
             ) : (
               <p className="mt-2 text-[var(--color-muted)]">
-                Upload a swing to get your coaching analysis and 7-day plan.
+                Upload a swing to get your kinesthetic blueprint and 7-day plan.
               </p>
             )}
           </Card>
           <Card>
-            <p className="text-sm text-[var(--color-muted)]">Swings Analyzed</p>
+            <p className="text-sm text-[var(--color-muted)]">Swings analyzed</p>
             <p className="mt-2 text-4xl font-semibold">{reports?.length ?? 0}</p>
             <Link href="/progress" className="mt-4 inline-block text-sm text-[var(--color-accent)] hover:underline">
               View history →
@@ -98,12 +105,22 @@ export default async function DashboardPage() {
         </div>
 
         <section className="mt-10">
-          <h2 className="mb-4 text-xl font-semibold">Recent Swings</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Recent swings</h2>
+            {(reports?.length ?? 0) > 0 && (
+              <Link
+                href="/progress"
+                className="text-sm text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+              >
+                Manage history →
+              </Link>
+            )}
+          </div>
           {!reports?.length ? (
             <Card className="text-center">
               <p className="text-[var(--color-muted)]">No swings yet. Upload your first video to get started.</p>
               <Link href="/upload" className="mt-4 inline-block">
-                <Button>Upload Swing</Button>
+                <Button>Upload swing</Button>
               </Link>
             </Card>
           ) : (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+import { PRICE_FIRST_ANALYSIS_DISPLAY, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -22,17 +22,18 @@ export default function LandingPage() {
       <main>
         <section className="mx-auto max-w-6xl px-4 py-20 text-center">
           <p className="mb-4 text-sm font-medium uppercase tracking-widest text-[var(--color-accent)]">
-            Player Improvement Engine
+            Player-improvement engine
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-semibold tracking-tight md:text-6xl">
-            Golf Swing Analysis You Can Take to the Range
+            Not a report card. A coaching blueprint you can feel on the range.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--color-muted)]">
-            Upload a full swing, chip, or putt for {PRICE_PER_ANALYSIS_DISPLAY}. Get a clear diagnosis, one main fix, practical feels, and a 7-day practice plan.
+            Upload full swing, chipping, or putting — {PRICE_FIRST_ANALYSIS_DISPLAY} first swing, then{" "}
+            {PRICE_PER_ANALYSIS_DISPLAY} each. Short blueprint, feels, and a 7-day plan.
           </p>
           <div className="mt-10 flex justify-center gap-4">
             <Link href="/signup">
-              <Button size="lg">Analyze my swing</Button>
+              <Button size="lg">Build my blueprint</Button>
             </Link>
             <Link href="/pricing">
               <Button size="lg" variant="secondary">View pricing</Button>
@@ -52,7 +53,7 @@ export default function LandingPage() {
           </Card>
 
           <Card className="space-y-4 text-left">
-            <p className="text-sm text-[var(--color-muted)]">Sample Analysis Preview</p>
+            <p className="text-sm text-[var(--color-muted)]">Sample blueprint preview</p>
             <StatusBadge status="current_focus" />
             <p className="text-lg font-semibold">The Over-the-Top Cut</p>
             <p className="text-sm text-[var(--color-muted)]">
@@ -67,12 +68,12 @@ export default function LandingPage() {
         <section className="border-t border-[var(--color-border)] bg-[var(--color-card)] py-20">
           <div className="mx-auto grid max-w-6xl gap-6 px-4 md:grid-cols-3">
             {[
-              { title: "Clear Diagnosis", desc: "Ball flight tied to swing mechanics, with the compensation explained in plain English." },
-              { title: "Practice-Ready Feels", desc: "Setup anchors, visual cues, and constraint drills focused on one priority at a time." },
-              { title: "7-Day Practice Plan", desc: "A simple weekly plan with a clear Day 7 check before your next upload." },
-              { title: "No Fake Precision", desc: "No gimmicky swing scores. Just practical coaching you can use over the ball." },
-              { title: "Private Video Handling", desc: "Your upload is stored privately and signed only when the app needs to analyze or display it." },
-              { title: "Reference Frames", desc: "Key moments from your swing alongside your analysis." },
+              { title: "Diagnostic truth", desc: "Ball flight tied to physics — why your body chose the compensation." },
+              { title: "Kinesthetic blueprint", desc: "Setup anchors, visual cues, and constraint drills — one feel at a time." },
+              { title: "7-day milestones", desc: "Unlock phases as you lock in the feel. Clear Day 7 test before your next upload." },
+              { title: "No score gimmicks", desc: "Zero report-card numbers. Actionable feels you can use standing over the ball." },
+              { title: "Optional coach review", desc: "Add human review from a coach (stub — coming with Stripe integration)." },
+              { title: "Video reference frames", desc: "Key moments from your swing alongside the blueprint." },
             ].map((f) => (
               <Card key={f.title}>
                 <h3 className="font-semibold">{f.title}</h3>
@@ -85,7 +86,7 @@ export default function LandingPage() {
         <section className="mx-auto max-w-6xl px-4 py-20 text-center">
           <h2 className="text-3xl font-semibold">Ready to train with purpose?</h2>
           <Link href="/signup" className="mt-6 inline-block">
-            <Button size="lg">Analyze my swing</Button>
+            <Button size="lg">Get started — {PRICE_FIRST_ANALYSIS_DISPLAY}</Button>
           </Link>
         </section>
       </main>

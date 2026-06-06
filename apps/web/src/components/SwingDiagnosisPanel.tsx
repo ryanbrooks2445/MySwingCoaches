@@ -57,7 +57,7 @@ export function SwingDiagnosisPanel({
         {title}
       </p>
       <h2 className="mt-1 text-2xl font-semibold capitalize">
-        {label(diagnosis.first_breakdown_checkpoint)}
+        {diagnosis.first_breakdown_checkpoint}
       </h2>
       <p className="mt-2 text-[var(--color-muted)]">{diagnosis.main_diagnosis}</p>
       {diagnosis.coach_warning && (

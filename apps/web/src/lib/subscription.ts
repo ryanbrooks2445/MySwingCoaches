@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/admin";
-import { PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+import { getNextAnalysisPriceDisplay } from "@/lib/pricing";
 import { PLAN_LIMITS, type CoachingContent, type Subscription } from "@/lib/types";
 
 export async function getSubscription(userId: string): Promise<Subscription | null> {
@@ -26,9 +26,10 @@ export async function canRunAnalysis(userId: string): Promise<{ allowed: boolean
   const remaining = analysisCreditsRemaining(sub);
   if (remaining === "unlimited") return { allowed: true };
   if (remaining < 1) {
+    const price = getNextAnalysisPriceDisplay(sub.analyses_used, sub.analyses_limit);
     return {
       allowed: false,
-      reason: `No analyses left. Purchase one for ${PRICE_PER_ANALYSIS_DISPLAY} on the pricing page.`,
+      reason: `No analyses left. Purchase one for ${price} on the pricing page.`,
     };
   }
   return { allowed: true };
@@ -45,8 +46,25 @@ function coachingFromRow(row: {
   coaching_content: unknown;
 }): CoachingContent | null {
   const raw = row.coaching_content as CoachingContent | null;
-  if (raw?.feel_blueprint || raw?.diagnostic) return raw;
+  if (raw?.main_fix || raw?.feel_blueprint || raw?.diagnostic) return raw;
   return null;
+}
+
+function priorCoachingSummary(row: {
+  main_diagnosis: string | null;
+  practice_plan: string | null;
+  coaching_content: unknown;
+}): { focus: string; mainFix: string | null; drills: string[] } {
+  const c = coachingFromRow(row);
+  const focus =
+    c?.roadmap?.weekly_focus ??
+    c?.main_fix?.split(/[.!?]/)[0]?.trim() ??
+    row.practice_plan ??
+    row.main_diagnosis ??
+    "Unknown";
+  const mainFix = c?.main_fix?.trim() ?? null;
+  const drills = (c?.drills ?? []).map((d) => d.name).filter(Boolean);
+  return { focus, mainFix, drills };
 }
 
 export async function buildPlayerContext(
@@ -60,16 +78,12 @@ export async function buildPlayerContext(
   playerAge: number | null;
   yearsPlaying: number | null;
   physicalLimitations: string | null;
-  handedness: string | null;
-  skillLevel: string | null;
-  cameraAnglePref: string | null;
-  priorProgress: Record<string, unknown> | null;
 }> {
   const supabase = createServiceClient();
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, age, years_playing, physical_limitations, handedness, skill_level, camera_angle_pref")
+    .select("display_name, age, years_playing, physical_limitations")
     .eq("id", userId)
     .single();
 
@@ -99,26 +113,18 @@ export async function buildPlayerContext(
     prior?.length ?
       prior
         .map((r, i) => {
-          const c = coachingFromRow(r);
-          const headline =
-            c?.feel_blueprint?.headline ?? c?.diagnostic?.headline ?? r.main_diagnosis ?? "Unknown";
-          const focus = c?.roadmap.weekly_focus ?? r.practice_plan ?? "—";
-          return `Swing ${i + 1} (${new Date(r.created_at).toLocaleDateString()}): "${headline}" — focus was ${focus}`;
+          const summary = priorCoachingSummary(r);
+          const drillLine =
+            summary.drills.length > 0 ? ` · drills: ${summary.drills.join(", ")}` : "";
+          const fixLine = summary.mainFix ? ` · unlock was: ${summary.mainFix.slice(0, 120)}` : "";
+          return `Swing ${i + 1} (${new Date(r.created_at).toLocaleDateString()}): focus "${summary.focus}"${fixLine}${drillLine}`;
         })
         .join("\n")
     : null;
 
-  const last = prior?.[0] ? coachingFromRow(prior[0]) : null;
-  const priorProgress = last?.improvement_engine?.progress_score
-    ? {
-        progress_score: last.improvement_engine.progress_score,
-        main_diagnosis: last.improvement_engine.main_diagnosis,
-        benchmark: last.improvement_engine.improvement_benchmark,
-      }
-    : null;
-  const lastHeadline =
-    last?.feel_blueprint?.headline ?? last?.diagnostic?.headline ?? prior?.[0]?.main_diagnosis;
-  const lastFocus = last?.roadmap.weekly_focus ?? prior?.[0]?.practice_plan;
+  const lastSummary = prior?.[0] ? priorCoachingSummary(prior[0]) : null;
+  const lastHeadline = lastSummary?.focus;
+  const lastFocus = lastSummary?.focus;
 
   const lines: string[] = [];
   if (playerName) lines.push(`Player first name: ${playerName}`);
@@ -129,10 +135,19 @@ export async function buildPlayerContext(
   if (completed === 0) {
     lines.push("First blueprint — welcome them and pick ONE clear weekly focus.");
   } else if (lastHeadline) {
-    lines.push(`Last pattern we saw: "${lastHeadline}".`);
+    lines.push(`Last focus we coached: "${lastHeadline}".`);
+    if (lastSummary?.mainFix) {
+      lines.push(`Last main unlock: "${lastSummary.mainFix.slice(0, 160)}".`);
+    }
+    if (lastSummary?.drills?.length) {
+      lines.push(`Last drills prescribed: ${lastSummary.drills.join(", ")}.`);
+      lines.push(
+        "Do NOT repeat the same diagnosis or drill unless that exact Constraint is still visible on this new video."
+      );
+    }
     if (lastFocus) lines.push(`Last weekly focus: "${String(lastFocus).replace(/\*\*/g, "")}".`);
     lines.push(
-      "Compare this video to last time — call out if the same fault persists or if they improved."
+      "Compare this video to last time — call out if the same missing piece persists or if they unlocked progress."
     );
   }
 
@@ -144,10 +159,6 @@ export async function buildPlayerContext(
     playerAge: profile?.age ?? null,
     yearsPlaying: profile?.years_playing ?? null,
     physicalLimitations: profile?.physical_limitations ?? null,
-    handedness: profile?.handedness ?? null,
-    skillLevel: profile?.skill_level ?? null,
-    cameraAnglePref: profile?.camera_angle_pref ?? null,
-    priorProgress,
   };
 }
 

@@ -14,8 +14,8 @@ export function FeelBlueprintReport({ feel }: FeelBlueprintReportProps) {
       <ReportMarkdown content={feel.opening_narrative} className="text-[var(--color-foreground)] leading-relaxed" />
 
       <div>
-        <h3 className="text-base font-semibold">The strengths</h3>
-        <p className="text-xs text-[var(--color-muted)]">The good stuff</p>
+        <h3 className="text-base font-semibold">What&apos;s working</h3>
+        <p className="text-xs text-[var(--color-muted)]">Your athletic engine</p>
         <ul className="mt-4 space-y-5">
           {feel.strengths.map((item) => (
             <li key={item.title}>
@@ -27,8 +27,8 @@ export function FeelBlueprintReport({ feel }: FeelBlueprintReportProps) {
       </div>
 
       <div>
-        <h3 className="text-base font-semibold">The weaknesses</h3>
-        <p className="text-xs text-[var(--color-muted)]">The flaws</p>
+        <h3 className="text-base font-semibold">The missing piece</h3>
+        <p className="text-xs text-[var(--color-muted)]">Final puzzle links in your chain</p>
         <ol className="mt-4 list-decimal space-y-5 pl-5">
           {feel.flaws.map((item) => (
             <li key={item.title}>
@@ -49,7 +49,7 @@ export function FeelBlueprintReport({ feel }: FeelBlueprintReportProps) {
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-accent)]">
-            If they fix the root flaw
+            When they unlock the missing piece
           </p>
           <ReportMarkdown content={feel.potential_ceiling} className="mt-2 text-sm leading-relaxed" />
         </div>

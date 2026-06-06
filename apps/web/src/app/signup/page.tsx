@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
+import { PRICE_FIRST_ANALYSIS_DISPLAY, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -44,17 +45,23 @@ export default function SignupPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <h1 className="text-2xl font-semibold">Create account</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">Create your account, then buy an analysis credit to upload.</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
+          Free account · first swing {PRICE_FIRST_ANALYSIS_DISPLAY}, then {PRICE_PER_ANALYSIS_DISPLAY} each
+        </p>
 
         {pendingLogin ? (
           <div className="mt-6 space-y-4 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 p-4">
             <p className="text-sm font-medium">Account created</p>
             <p className="text-sm text-[var(--color-muted)]">
-              Check your inbox for a confirmation link. Once confirmed, log in to continue.
+              If email confirmation is on, check your inbox first. Otherwise go straight to log in.
             </p>
             <Link href="/login">
               <Button className="w-full">Log in</Button>
             </Link>
+            <p className="text-xs text-[var(--color-muted)]">
+              Dev tip: Supabase Dashboard → Authentication → Sign In / Providers → Email → turn off{" "}
+              <strong>Confirm email</strong> so sign-up logs you in immediately.
+            </p>
           </div>
         ) : (
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

@@ -1,262 +1,219 @@
 import type {
   AnalysisBullet,
-  CoachSummaryReport,
   CoachingContent,
   FeelBlueprintDiagnostic,
+  SimplifiedSwingReport,
   SwingDiagnosisEngine,
   SwingReport,
 } from "@/lib/types";
 
-function hasNewFeelBlueprint(content: CoachingContent): boolean {
-  return Boolean(content.feel_blueprint?.strengths?.length && content.feel_blueprint.opening_narrative);
+function hasSimplifiedReport(content: CoachingContent): boolean {
+  return Boolean(content.pga_analysis?.trim() && content.main_fix?.trim());
 }
 
-function hasCompactFeelBlueprint(content: CoachingContent): boolean {
-  const fb = content.feel_blueprint;
-  return Boolean(fb?.posture_check && fb?.real_culprit);
+function hasNewFeelBlueprint(content: CoachingContent): boolean {
+  return Boolean(content.feel_blueprint?.strengths?.length && content.feel_blueprint.opening_narrative);
 }
 
 function hasLegacyDiagnostic(content: CoachingContent): boolean {
   return Boolean(content.diagnostic?.headline);
 }
 
-/** Parse coaching JSON from report (new or legacy). */
+function hasDiagnosisEngine(content: CoachingContent): boolean {
+  return Boolean(content.diagnosis_engine?.main_diagnosis);
+}
+
+/** Parse coaching JSON from report. */
 export function parseCoachingContent(report: SwingReport): CoachingContent | null {
-  const stored = report.coaching_content;
-  if (
-    stored &&
-    (hasNewFeelBlueprint(stored) || hasCompactFeelBlueprint(stored) || hasLegacyDiagnostic(stored)) &&
-    stored.blueprint &&
-    stored.roadmap
-  ) {
-    return stored;
-  }
-  const raw = report.gemini_raw as CoachingContent | null | undefined;
-  if (
-    raw &&
-    (hasNewFeelBlueprint(raw) || hasCompactFeelBlueprint(raw) || hasLegacyDiagnostic(raw)) &&
-    raw.blueprint &&
-    raw.roadmap
-  ) {
-    return raw;
-  }
-  return null;
+  const tryParse = (raw: CoachingContent | null | undefined): CoachingContent | null => {
+    if (!raw) return null;
+    if (hasSimplifiedReport(raw)) return raw;
+    if (hasDiagnosisEngine(raw) || hasNewFeelBlueprint(raw) || hasLegacyDiagnostic(raw)) {
+      return raw;
+    }
+    if (raw.blueprint && raw.roadmap) return raw;
+    return null;
+  };
+
+  return tryParse(report.coaching_content) ?? tryParse(report.gemini_raw as CoachingContent);
 }
 
-function compactToFull(fb: FeelBlueprintDiagnostic): FeelBlueprintDiagnostic {
-  if (fb.strengths?.length) return fb;
+function diagnosisToSimplified(d: SwingDiagnosisEngine, content: CoachingContent): SimplifiedSwingReport {
+  const tips = d.what_to_feel
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 8)
+    .slice(0, 4);
+  if (tips.length === 0 && d.what_to_feel) tips.push(d.what_to_feel);
+
+  const drills = d.one_drill?.name
+    ? [
+        {
+          name: d.one_drill.name,
+          why_it_helps: d.one_drill.why,
+          how_to_do_it: d.one_drill.how,
+        },
+      ]
+    : [];
+
   return {
-    opening_narrative: fb.posture_check ?? "",
-    headline: fb.headline,
-    strengths: [
-      {
-        title: "What we saw at address",
-        detail: fb.posture_check ?? "",
-      },
-      {
-        title: "Prior progress",
-        detail: "Building on your last session focus.",
-      },
-    ],
-    flaws: [
-      {
-        title: "The real culprit",
-        detail: fb.real_culprit ?? "",
-      },
-      {
-        title: "Ball flight physics",
-        detail: fb.kinetic_reaction ?? "",
-      },
-    ],
-    current_ceiling: "See potential ceiling if they apply the pro fixes below.",
-    potential_ceiling: "Fixing the root setup flaw should raise their consistent ceiling.",
-    pro_fixes: [
-      {
-        title: "Primary feel",
-        detail: fb.body_part_cue ?? "",
-      },
-      {
-        title: "Spatial feel",
-        detail: fb.spatial_cue ?? "",
-      },
-    ],
-    body_part_cue: fb.body_part_cue ?? "",
-    spatial_cue: fb.spatial_cue ?? "",
+    pga_analysis: [d.main_diagnosis, d.skill_level_note].filter(Boolean).join(" "),
+    main_fix: d.fix_priority.primary,
+    tips_and_feels: tips,
+    drills,
+    next_swing_check: d.next_upload_focus || content.next_upload_focus,
+    advanced_details: {
+      root_cause: d.root_cause,
+      symptom: d.symptom,
+      evidence_metrics: d.evidence?.map((e) => `${e.label}: ${e.value}`) ?? [],
+      secondary_fix: d.fix_priority.secondary,
+      optional_fix: d.fix_priority.optional,
+      chain_reaction: d.chain_reaction,
+      why_it_caused_the_miss: d.symptom,
+      confidence_score: 0.8,
+      next_checkpoint: d.first_breakdown_checkpoint,
+    },
   };
 }
 
+function feelBlueprintToSimplified(content: CoachingContent, fb: FeelBlueprintDiagnostic): SimplifiedSwingReport {
+  const primaryFix = fb.pro_fixes[0];
+  const tips = [
+    fb.body_part_cue,
+    fb.spatial_cue,
+    ...fb.pro_fixes.slice(1).map((p) => `${p.title}: ${p.detail}`),
+  ].filter(Boolean);
+
+  const drills = fb.pro_fixes.slice(0, 3).map((p) => ({
+    name: p.title,
+    why_it_helps: p.detail,
+    how_to_do_it: "15–20 reps at half speed before full swings.",
+  }));
+
+  if (drills.length === 0 && content.blueprint?.steps?.length) {
+    for (const step of content.blueprint.steps.slice(0, 3)) {
+      drills.push({
+        name: step.title,
+        why_it_helps: step.adjustment ?? step.action ?? step.feel,
+        how_to_do_it: step.success_condition ?? step.feel,
+      });
+    }
+  }
+
+  const strengthsBlock = fb.strengths
+    .map((s) => `${s.title}: ${s.detail}`)
+    .join(" ");
+  const missingBlock = fb.flaws.map((f) => `${f.title}: ${f.detail}`).join(" ");
+  const unlockBlock = fb.potential_ceiling?.trim()
+    ? `What changes when you unlock it\n\n${fb.potential_ceiling}`
+    : "";
+  return {
+    pga_analysis: [
+      "What's working",
+      strengthsBlock || fb.opening_narrative,
+      "The missing piece",
+      missingBlock || fb.opening_narrative,
+      unlockBlock,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    main_fix: primaryFix ? `${primaryFix.title}: ${primaryFix.detail}` : fb.body_part_cue,
+    tips_and_feels: tips.slice(0, 4),
+    drills: drills.slice(0, 3),
+    next_swing_check: content.next_swing_check ?? content.next_upload_focus,
+    advanced_details: {
+      root_cause: fb.flaws[0]?.detail ?? "",
+      symptom: fb.flaws[1]?.detail ?? "",
+      evidence_metrics: fb.flaws.map((f) => f.title),
+      secondary_fix: fb.pro_fixes[1]?.detail ?? "",
+      optional_fix: fb.pro_fixes[2]?.detail ?? "",
+      chain_reaction: fb.flaws.map((f) => f.title).join(" → "),
+      why_it_caused_the_miss: fb.current_ceiling,
+      confidence_score: 0.75,
+      next_checkpoint: content.blueprint?.steps[0]?.title ?? "",
+    },
+  };
+}
+
+export function getSimplifiedReport(content: CoachingContent): SimplifiedSwingReport {
+  if (hasSimplifiedReport(content)) {
+    return {
+      pga_analysis: content.pga_analysis!,
+      main_fix: content.main_fix!,
+      tips_and_feels: content.tips_and_feels ?? [],
+      drills: content.drills ?? [],
+      next_swing_check: content.next_swing_check ?? content.next_upload_focus,
+      advanced_details: content.advanced_details ?? {
+        report_mode: "development",
+        foundational_missing_piece: "",
+        root_cause: "",
+        symptom: "",
+        evidence_metrics: [],
+        secondary_fix: "",
+        optional_fix: "",
+        chain_reaction: "",
+        why_it_caused_the_miss: "",
+        confidence_score: 0,
+      },
+    };
+  }
+  if (content.diagnosis_engine) {
+    return diagnosisToSimplified(content.diagnosis_engine, content);
+  }
+  if (content.feel_blueprint && hasNewFeelBlueprint(content)) {
+    return feelBlueprintToSimplified(content, content.feel_blueprint);
+  }
+  if (content.diagnostic && content.blueprint) {
+    const d = content.diagnostic;
+    return {
+      pga_analysis: `${d.headline}. ${d.mechanical_cause}`,
+      main_fix: d.mechanical_cause,
+      tips_and_feels: [content.blueprint.steps[0]?.feel ?? d.mechanical_cause],
+      drills: content.blueprint.steps.slice(0, 3).map((s) => ({
+        name: s.title,
+        why_it_helps: s.adjustment ?? s.feel,
+        how_to_do_it: s.success_condition ?? s.feel,
+      })),
+      next_swing_check: content.next_upload_focus,
+      advanced_details: {
+        root_cause: d.mechanical_cause,
+        symptom: d.what_your_eye_sees,
+        evidence_metrics: [],
+        secondary_fix: "",
+        optional_fix: "",
+        chain_reaction: d.kinetic_chain,
+        why_it_caused_the_miss: d.what_your_eye_sees,
+        confidence_score: 0.7,
+      },
+    };
+  }
+  return {
+    pga_analysis: "Upload a new swing for your coach plan.",
+    main_fix: "—",
+    tips_and_feels: [],
+    drills: [],
+    next_swing_check: content.next_upload_focus,
+    advanced_details: {
+      root_cause: "",
+      symptom: "",
+      evidence_metrics: [],
+      secondary_fix: "",
+      optional_fix: "",
+      chain_reaction: "",
+      why_it_caused_the_miss: "",
+      confidence_score: 0,
+    },
+  };
+}
+
+/** @deprecated Use getSimplifiedReport */
 export function getFeelBlueprint(content: CoachingContent): FeelBlueprintDiagnostic | null {
-  if (content.feel_blueprint) {
-    if (hasNewFeelBlueprint(content)) return content.feel_blueprint;
-    if (hasCompactFeelBlueprint(content)) return compactToFull(content.feel_blueprint);
-  }
-  if (!content.diagnostic) return null;
-  const d = content.diagnostic;
-  const strengths: AnalysisBullet[] = [
-    { title: "Committed to the shot", detail: "You're in the app working on your game." },
-  ];
-  const flaws: AnalysisBullet[] = [
-    { title: d.headline, detail: d.mechanical_cause },
-    { title: "Ball flight", detail: d.what_your_eye_sees },
-  ];
-  return {
-    opening_narrative: d.mechanical_cause,
-    headline: d.headline,
-    strengths,
-    flaws,
-    current_ceiling: d.what_your_eye_sees,
-    potential_ceiling: d.kinetic_chain,
-    pro_fixes: [
-      {
-        title: "Range focus",
-        detail: content.blueprint.steps[0]?.feel ?? "One feel at a time.",
-      },
-    ],
-    body_part_cue: content.blueprint.steps[0]?.feel ?? "—",
-    spatial_cue: d.kinetic_chain,
-  };
-}
-
-export function isLegacyCoachingFormat(content: CoachingContent): boolean {
-  return !hasNewFeelBlueprint(content) && !hasCompactFeelBlueprint(content) && Boolean(content.diagnostic);
+  return content.feel_blueprint ?? null;
 }
 
 export function getReportFocusLabel(report: SwingReport): string | null {
   const content = parseCoachingContent(report);
-  if (content?.roadmap?.weekly_focus) {
-    return content.roadmap.weekly_focus.replace(/\*\*/g, "");
-  }
-  const feel = content ? getFeelBlueprint(content) : null;
-  if (feel?.headline) return feel.headline;
-  return report.main_diagnosis;
-}
-
-function cleanText(value: unknown, fallback = "") {
-  if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
-  return fallback;
-}
-
-function dedupe(items: Array<string | null | undefined>, limit: number) {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const item of items) {
-    const cleaned = cleanText(item);
-    if (!cleaned) continue;
-    const key = cleaned.toLowerCase().replace(/[.]/g, "");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(cleaned);
-    if (result.length >= limit) break;
-  }
-  return result;
-}
-
-function label(text: string) {
-  return text.replaceAll("_", " ");
-}
-
-function plainEvidence(diagnosis?: SwingDiagnosisEngine | null) {
-  return (diagnosis?.evidence ?? []).slice(0, 4).map((item) => {
-    const checkpoint = label(item.checkpoint);
-    const metric = label(item.metric)
-      .replace("trail elbow position", "trail arm position")
-      .replace("club forearm plane proxy", "club and arm plane");
-    return item.interpretation
-      ? `At ${checkpoint}, ${metric} supported the diagnosis: ${item.interpretation}`
-      : `At ${checkpoint}, ${metric} supported the diagnosis.`;
-  });
-}
-
-function drillSteps(text: string) {
-  const parts = text
-    .split(".")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .slice(0, 5);
-  const fallback = [
-    "Put a towel under your trail armpit",
-    "Make slow three-quarter swings",
-    "Keep the connection light until the top",
-    "Hit easy shots before adding speed",
-  ];
-  while (parts.length < 3) parts.push(fallback[parts.length]);
-  return parts.map((part) => (part.endsWith(".") ? part : `${part}.`));
-}
-
-export function getCoachSummaryReport(content: CoachingContent): CoachSummaryReport {
-  if (content.coach_summary_report) return content.coach_summary_report;
-
-  const feel = getFeelBlueprint(content);
-  const diagnosis = content.diagnosis_engine;
-  const improvement = content.improvement_engine;
-  const practice = improvement?.practice_plan;
-  const drill = practice?.primary_drill;
-  const pga = content.pga_coach_analysis;
-
-  const mainLeak = cleanText(
-    improvement?.main_diagnosis || diagnosis?.main_diagnosis || feel?.flaws?.[0]?.detail,
-    "There is one main swing leak to fix first."
-  );
-  const whyItMatters = cleanText(
-    improvement?.expected_ball_flight_consequence || diagnosis?.chain_reaction,
-    "It makes strike and direction depend too much on timing."
-  );
-  const feels = dedupe(
-    [
-      ...(practice?.feels ?? []),
-      feel?.body_part_cue,
-      feel?.spatial_cue,
-      diagnosis?.what_to_feel,
-    ],
-    3
-  );
-  const whatsWorking = dedupe(
-    [
-      ...(feel?.strengths ?? []).map((item) => item.detail || item.title),
-      pga?.pga_analysis,
-    ],
-    3
-  );
-
-  return {
-    coach_summary: cleanText(
-      pga?.pga_analysis || feel?.opening_narrative,
-      `${mainLeak} ${whyItMatters}`
-    ),
-    whats_working: whatsWorking.length
-      ? whatsWorking
-      : ["There is at least one useful athletic pattern to build around."],
-    main_swing_leak: mainLeak,
-    why_it_matters: whyItMatters,
-    feel_this_week: cleanText(
-      practice?.practice_goal || feel?.body_part_cue || diagnosis?.what_to_feel,
-      "Make the first fix simple enough to repeat."
-    ),
-    what_to_feel: feels.length ? feels : ["Keep the first fix simple and slow enough to feel."],
-    fix_it_drill: {
-      name: cleanText(drill?.name || diagnosis?.one_drill?.name, "Fix-It Drill"),
-      steps: drillSteps(cleanText(drill?.how_to_do_it || diagnosis?.one_drill?.instructions)),
-      dose: cleanText(practice?.dosage || diagnosis?.one_drill?.sets_reps, "15-20 balls at 60% speed."),
-      success_check: cleanText(practice?.success_check || diagnosis?.one_drill?.success_metric, "You can repeat the feel without rushing."),
-    },
-    practice_plan_7_day: [
-      "Day 1-2: rehearsal swings only.",
-      "Day 3-4: 15-20 half-speed balls.",
-      "Day 5-6: blend the feel into normal swings.",
-      "Day 7: upload the recommended angle.",
-    ],
-    next_upload_goal: cleanText(
-      improvement?.improvement_benchmark?.upload_instruction || pga?.next_upload_focus || diagnosis?.next_upload_focus || content.next_upload_focus,
-      "Film the same swing from down-the-line and check the main checkpoint."
-    ),
-    advanced_details: {
-      first_breakdown_checkpoint: cleanText(diagnosis?.first_breakdown_checkpoint, "unknown"),
-      root_cause: cleanText(diagnosis?.root_cause, mainLeak),
-      symptom: cleanText(diagnosis?.symptom, whyItMatters),
-      confidence_note: cleanText(pga?.confidence_note || improvement?.confidence?.why, "Confidence depends on video angle and club visibility."),
-      camera_angle_limitations: cleanText(diagnosis?.coach_warning, "A second camera angle may confirm path and face details."),
-      evidence_plain_english: plainEvidence(diagnosis),
-      raw_metrics: { evidence: diagnosis?.evidence ?? [] },
-    },
-  };
+  if (!content) return report.main_diagnosis;
+  const simple = getSimplifiedReport(content);
+  return simple.pga_analysis.split(/[.!?]/)[0]?.trim() || report.main_diagnosis;
 }

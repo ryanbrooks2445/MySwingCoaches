@@ -1,38 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/admin";
-
-type KeyFrameRow = {
-  phase?: string;
-  url?: string;
-  storage_path?: string;
-};
-
-async function refreshKeyFrameUrls(report: {
-  user_id: string;
-  video_id: string;
-  key_frame_urls?: KeyFrameRow[] | null;
-}) {
-  const frames = Array.isArray(report.key_frame_urls) ? report.key_frame_urls : [];
-  if (!frames.length) return frames;
-
-  const serviceClient = createServiceClient();
-  return Promise.all(
-    frames.map(async (frame) => {
-      if (!frame.phase) return frame;
-      const storagePath = frame.storage_path || `${report.user_id}/${report.video_id}/${frame.phase}.jpg`;
-      const { data } = await serviceClient.storage
-        .from("swing-frames")
-        .createSignedUrl(storagePath, 3600);
-
-      return {
-        ...frame,
-        storage_path: storagePath,
-        url: data?.signedUrl || frame.url || null,
-      };
-    })
-  );
-}
 
 export async function GET(
   _request: NextRequest,
@@ -68,13 +35,8 @@ export async function GET(
     .eq("report_id", reportId)
     .order("sort_order");
 
-  const refreshedFrames = await refreshKeyFrameUrls(report);
-
   return NextResponse.json({
-    report: {
-      ...report,
-      key_frame_urls: refreshedFrames,
-    },
+    report,
     issues: issues ?? [],
     drills: drills ?? [],
   });

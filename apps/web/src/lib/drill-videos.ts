@@ -64,9 +64,9 @@ export function resolveDrillVideoUrl(
   const slug =
     videoSlug ??
     (stepType === "constraint_drill"
-      ? "wall_contact"
+      ? "feet_together"
       : stepType === "visual_cue"
-        ? "back_to_target"
+        ? "slow_motion_reps"
         : "setup_posture");
   const entry = DRILL_CATALOG[slug] ?? DRILL_CATALOG.generic_feel;
   return { url: entry.embedUrl, title: entry.title };

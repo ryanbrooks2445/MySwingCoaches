@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import {
+  PRICE_FIRST_ANALYSIS_DISPLAY,
   PRICE_PER_ANALYSIS_DISPLAY,
   SWING_MODE_HINTS,
   SWING_MODE_LABELS,
   SWING_MODES,
+  getNextAnalysisPriceDisplay,
   type SwingMode,
 } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
@@ -23,18 +25,12 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [swingMode, setSwingMode] = useState<SwingMode>("full_swing");
   const [credits, setCredits] = useState<number | "unlimited" | null>(null);
+  const [nextPrice, setNextPrice] = useState(PRICE_FIRST_ANALYSIS_DISPLAY);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [profileComplete, setProfileComplete] = useState(false);
-  const [cameraAngle, setCameraAngle] = useState("unknown");
-  const [handedness, setHandedness] = useState("");
-  const [clubUsed, setClubUsed] = useState("");
-  const [ballFlight, setBallFlight] = useState("");
-  const [userGoal, setUserGoal] = useState("");
-  const [handicap, setHandicap] = useState("");
-  const [practiceAvailability, setPracticeAvailability] = useState("");
 
   useEffect(() => {
     async function loadCredits() {
@@ -50,13 +46,17 @@ export default function UploadPage() {
         .single();
       if (!sub) {
         setCredits(0);
+        setNextPrice(PRICE_FIRST_ANALYSIS_DISPLAY);
         return;
       }
-      if (sub.plan === "serious" || sub.analyses_limit === -1) {
+      const used = sub.analyses_used ?? 0;
+      const limit = sub.analyses_limit ?? 0;
+      setNextPrice(getNextAnalysisPriceDisplay(used, limit));
+      if (sub.plan === "serious" || limit === -1) {
         setCredits("unlimited");
         return;
       }
-      setCredits(Math.max(0, (sub.analyses_limit ?? 0) - (sub.analyses_used ?? 0)));
+      setCredits(Math.max(0, limit - used));
     }
     loadCredits();
   }, []);
@@ -76,19 +76,12 @@ export default function UploadPage() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in. Please log in and try again.");
 
-      setStatus("Uploading your video...");
+      setStatus("Uploading video to storage...");
       setProgress(20);
 
       const formData = new FormData();
       formData.append("file", file);
       formData.append("swingMode", swingMode);
-      formData.append("cameraAngle", cameraAngle);
-      formData.append("handedness", handedness);
-      formData.append("clubUsed", clubUsed);
-      formData.append("ballFlight", ballFlight);
-      formData.append("userGoal", userGoal);
-      formData.append("handicap", handicap);
-      formData.append("practiceAvailability", practiceAvailability);
 
       const uploadRes = await fetch("/api/swings/upload", {
         method: "POST",
@@ -101,17 +94,22 @@ export default function UploadPage() {
       }
 
       setProgress(70);
-      setStatus(`Analyzing your ${SWING_MODE_LABELS[swingMode].toLowerCase()} (usually 1-3 minutes)...`);
+      setStatus(`Analyzing your ${SWING_MODE_LABELS[swingMode].toLowerCase()} (1–3 min)...`);
 
       const analyzeRes = await fetch(`/api/swings/${uploadData.reportId}/analyze`, {
         method: "POST",
+        headers: uploadData.traceId
+          ? { "X-Trace-Id": uploadData.traceId }
+          : undefined,
       });
 
       let analyzeData: { error?: string } = {};
       try {
         analyzeData = await analyzeRes.json();
       } catch {
-        throw new Error("The analysis service is temporarily unavailable. Please try again in a few minutes.");
+        throw new Error(
+          "Analysis service unreachable. Start it with: cd analysis-service && uvicorn app.main:app --reload --port 8001"
+        );
       }
 
       if (!analyzeRes.ok) {
@@ -125,7 +123,7 @@ export default function UploadPage() {
       const message = err instanceof Error ? err.message : "Something went wrong";
       if (message === "Failed to fetch") {
         setError(
-          "Network error. Please check your connection and try again."
+          "Network error — is the dev server running? Run: cd apps/web && npm run dev"
         );
       } else {
         setError(message);
@@ -142,13 +140,16 @@ export default function UploadPage() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="text-3xl font-semibold">Upload</h1>
         <p className="mt-1 text-[var(--color-muted)]">
-          {PRICE_PER_ANALYSIS_DISPLAY} per analysis · pick your mode first
+          {nextPrice} per analysis · pick your mode first
+          {nextPrice === PRICE_FIRST_ANALYSIS_DISPLAY && (
+            <span> · then {PRICE_PER_ANALYSIS_DISPLAY} each</span>
+          )}
         </p>
 
         {credits !== null && (
           <p className="mt-2 text-sm">
             {credits === "unlimited" ? (
-              <span className="text-[var(--color-accent)]">Unlimited analyses</span>
+              <span className="text-[var(--color-accent)]">Unlimited analyses (dev)</span>
             ) : credits > 0 ? (
               <span>
                 <span className="font-medium text-[var(--color-foreground)]">{credits}</span>{" "}
@@ -205,98 +206,6 @@ export default function UploadPage() {
             <p className="mt-2 text-sm text-[var(--color-muted)]">{SWING_MODE_HINTS[swingMode]}</p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="font-medium">Camera angle</span>
-              <select
-                value={cameraAngle}
-                disabled={uploading}
-                onChange={(e) => setCameraAngle(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-              >
-                <option value="unknown">Not sure</option>
-                <option value="down-the-line">Down the line</option>
-                <option value="face-on">Face on</option>
-              </select>
-            </label>
-
-            <label className="block text-sm">
-              <span className="font-medium">Handedness</span>
-              <select
-                value={handedness}
-                disabled={uploading}
-                onChange={(e) => setHandedness(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-              >
-                <option value="">Use profile/default</option>
-                <option value="right">Right-handed</option>
-                <option value="left">Left-handed</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="font-medium">Club</span>
-              <input
-                value={clubUsed}
-                disabled={uploading}
-                maxLength={80}
-                onChange={(e) => setClubUsed(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-                placeholder="Driver, 7 iron, wedge"
-              />
-            </label>
-
-            <label className="block text-sm">
-              <span className="font-medium">Handicap or scoring level</span>
-              <input
-                value={handicap}
-                disabled={uploading}
-                maxLength={80}
-                onChange={(e) => setHandicap(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-                placeholder="12 handicap, shoots 90s"
-              />
-            </label>
-          </div>
-
-          <label className="block text-sm">
-            <span className="font-medium">Typical miss or ball flight</span>
-            <input
-              value={ballFlight}
-              disabled={uploading}
-              maxLength={180}
-              onChange={(e) => setBallFlight(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-              placeholder="Push slice, pull hook, thin contact, chunks"
-            />
-          </label>
-
-          <label className="block text-sm">
-            <span className="font-medium">What do you want fixed first?</span>
-            <input
-              value={userGoal}
-              disabled={uploading}
-              maxLength={180}
-              onChange={(e) => setUserGoal(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-              placeholder="More consistent contact, stop slicing driver"
-            />
-          </label>
-
-          <label className="block text-sm">
-            <span className="font-medium">Practice time this week</span>
-            <input
-              value={practiceAvailability}
-              disabled={uploading}
-              maxLength={120}
-              onChange={(e) => setPracticeAvailability(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
-              placeholder="20 minutes a day, one range session"
-            />
-          </label>
-
           <UploadDropzone
             onFileSelect={setFile}
             disabled={uploading || !profileComplete}
@@ -329,7 +238,9 @@ export default function UploadPage() {
           >
             {uploading
               ? "Processing..."
-              : `Upload & analyze — ${PRICE_PER_ANALYSIS_DISPLAY}`}
+              : hasCredit
+                ? "Upload & analyze"
+                : `Buy credit first — ${nextPrice}`}
           </Button>
         </Card>
       </main>
