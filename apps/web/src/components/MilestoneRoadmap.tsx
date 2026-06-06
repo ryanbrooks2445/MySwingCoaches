@@ -84,12 +84,8 @@ export function MilestoneRoadmap({
               </div>
               <ReportMarkdown content={m.detail} className="mt-3" />
               {isCurrent && (
-                <Button
-                  variant="secondary"
-                  className="mt-4"
-                  onClick={() => markComplete(i)}
-                >
-                  Milestone complete
+                <Button size="lg" className="mt-4 w-full sm:w-auto" onClick={() => markComplete(i)}>
+                  Milestone complete →
                 </Button>
               )}
             </Card>

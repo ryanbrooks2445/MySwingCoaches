@@ -24,7 +24,7 @@ export default function LoginPage() {
     if (authError) {
       setError(
         authError.message === "Email not confirmed"
-          ? "Email not confirmed. Check your inbox for the confirmation link, or ask your admin to confirm your account in Supabase."
+          ? "Email not confirmed. Check your inbox for the confirmation link, then try again."
           : authError.message
       );
       return;
@@ -63,7 +63,7 @@ export default function LoginPage() {
         <p className="mt-4 text-center text-sm text-[var(--color-muted)]">
           No account?{" "}
           <Link href="/signup" className="text-[var(--color-accent)] hover:underline">
-            Sign up
+            Create a new account
           </Link>
         </p>
       </Card>

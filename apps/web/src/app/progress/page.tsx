@@ -24,9 +24,9 @@ export default async function ProgressPage() {
     <div className="min-h-screen">
       <AppNav />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="text-3xl font-semibold">Training history</h1>
+        <h1 className="text-3xl font-semibold">Training History</h1>
         <p className="mt-1 text-[var(--color-muted)]">
-          Your coaching blueprints and weekly focuses over time
+          Your coaching analyses and weekly focus areas over time
         </p>
 
         <section className="mt-10">
@@ -38,8 +38,8 @@ export default async function ProgressPage() {
                 <thead className="bg-[var(--color-card)]">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Date</th>
-                    <th className="px-4 py-3 text-left font-medium">Weekly focus</th>
-                    <th className="px-4 py-3 text-left font-medium">Blueprint</th>
+                    <th className="px-4 py-3 text-left font-medium">Weekly Focus</th>
+                    <th className="px-4 py-3 text-left font-medium">Analysis</th>
                   </tr>
                 </thead>
                 <tbody>

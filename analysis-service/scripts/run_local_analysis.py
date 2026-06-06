@@ -29,13 +29,14 @@ def main():
     print(f"  {len(frames)} frames, {fps:.1f} fps, ~{duration}s duration")
 
     keyframe_indices = sample_keyframe_indices(len(frames))
-    print(f"Key frame indices (evenly sampled): {keyframe_indices}")
+    print(f"Key frame indices: {keyframe_indices}")
 
     print("\nGenerating Gemini video coaching report...")
     report, ai_ok, gemini_meta = generate_coaching_report(
         video_path=args.video_path,
         frames=frames,
         keyframe_indices=keyframe_indices,
+        fps=fps,
         history_summary=None,
     )
     print(f"AI narrative available: {ai_ok}")

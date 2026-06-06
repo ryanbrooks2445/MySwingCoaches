@@ -8,6 +8,9 @@ export interface Profile {
   id: string;
   display_name: string | null;
   role: UserRole;
+  age?: number | null;
+  years_playing?: number | null;
+  physical_limitations?: string | null;
 }
 
 export interface Subscription {
@@ -57,6 +60,7 @@ export interface SwingReport {
 export interface KeyFrameUrl {
   phase: string;
   url: string;
+  storage_path?: string;
   confidence?: number;
 }
 
@@ -90,26 +94,13 @@ export interface CoachReview {
   completed_at: string | null;
 }
 
-export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
-  free: 5,
-  player: 10,
-  serious: -1,
-};
+export const PRICE_PER_ANALYSIS = 19.99;
+export const PRICE_PER_ANALYSIS_DISPLAY = "$19.99";
 
-export const PLAN_PRICES: Record<SubscriptionPlan, { name: string; price: string; features: string[] }> = {
-  free: {
-    name: "Free",
-    price: "$0",
-    features: ["5 swing analyses", "Basic AI report", "Key frame breakdown"],
-  },
-  player: {
-    name: "Player",
-    price: "$19/mo",
-    features: ["10 analyses per month", "Progress tracking", "Drill library"],
-  },
-  serious: {
-    name: "Serious Golfer",
-    price: "$49/mo",
-    features: ["Unlimited AI analyses", "Progress tracking", "Priority processing"],
-  },
+export type SwingMode = "full_swing" | "chipping" | "putting";
+
+export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
+  free: 0,
+  player: 0,
+  serious: -1,
 };

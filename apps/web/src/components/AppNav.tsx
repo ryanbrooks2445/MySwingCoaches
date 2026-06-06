@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -13,6 +16,16 @@ const links = [
 
 export function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <header className="border-b border-[var(--color-border)] bg-[var(--color-card)]/80 backdrop-blur">
@@ -35,6 +48,16 @@ export function AppNav() {
               {link.label}
             </Link>
           ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={signingOut}
+            onClick={handleSignOut}
+            className="text-[var(--color-muted)]"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </Button>
         </nav>
       </div>
     </header>

@@ -26,8 +26,8 @@ def _mime_for_video(path: Path) -> str:
     return "video/mp4"
 
 
-def upload_video(client: genai.Client, video_path: Path) -> types.File:
-    mime = _mime_for_video(video_path)
+def upload_video(client: genai.Client, video_path: Path, mime_type: str | None = None) -> types.File:
+    mime = mime_type or _mime_for_video(video_path)
     uploaded = client.files.upload(
         file=str(video_path),
         config=types.UploadFileConfig(mime_type=mime),
@@ -57,7 +57,7 @@ def delete_uploaded_file(client: genai.Client, uploaded: types.File | None) -> N
         logger.warning("Could not delete Gemini uploaded file: %s", exc)
 
 
-def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = 90) -> bytes:
+def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = 92) -> bytes:
     bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     ok, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not ok:
@@ -68,20 +68,24 @@ def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = 90) -> bytes:
 def build_keyframe_parts(
     frames: list[np.ndarray],
     keyframe_indices: dict[str, int],
+    frame_timestamps: dict[str, float] | None = None,
 ) -> list[types.Part]:
-    """Attach evenly spaced stills as visual reference — not pose-detected phases."""
+    """Attach ordered checkpoint stills as visual reference to the full video."""
     parts: list[types.Part] = []
     total = len(frames)
     for phase, idx in keyframe_indices.items():
         if idx < 0 or idx >= total:
             continue
         pct = int((idx / max(total - 1, 1)) * 100)
+        timestamp = frame_timestamps.get(phase) if frame_timestamps else None
+        timestamp_text = f"{timestamp:.2f}s" if timestamp is not None else "unknown timestamp"
         jpeg = frame_to_jpeg_bytes(frames[idx])
         parts.append(
             types.Part.from_text(
                 text=(
-                    f"Reference still — roughly {pct}% through the swing "
-                    f"(evenly sampled; label '{phase.replace('_', ' ')}' is approximate)"
+                    f"Ordered checkpoint still: {phase.replace('_', ' ')} at {timestamp_text} "
+                    f"(roughly {pct}% through the sampled clip). Use the full video as primary evidence; "
+                    "if this label appears slightly off, correct it from the video."
                 )
             )
         )

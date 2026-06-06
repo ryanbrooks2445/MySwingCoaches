@@ -3,24 +3,37 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
-import { BlueprintPhaseViewer } from "@/components/BlueprintPhaseViewer";
+import { CoachSummaryReport } from "@/components/CoachSummaryReport";
 import { KeyFrameGallery } from "@/components/KeyFrameGallery";
-import { MilestoneRoadmap } from "@/components/MilestoneRoadmap";
 import { ReportMarkdown } from "@/components/ReportMarkdown";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { parseCoachingContent } from "@/lib/coaching";
+import { getCoachSummaryReport, parseCoachingContent } from "@/lib/coaching";
+import { SWING_MODE_LABELS } from "@/lib/pricing";
 import { DISCLAIMER } from "@/lib/utils";
 import type { KeyFrameUrl, SwingReport } from "@/lib/types";
 
-const PHASES = ["address", "takeaway", "top", "downswing", "impact", "finish"];
+const PHASES = [
+  "setup_address",
+  "takeaway",
+  "club_parallel_back",
+  "lead_arm_parallel_back",
+  "top_of_backswing",
+  "transition",
+  "lead_arm_parallel_down",
+  "shaft_parallel_down",
+  "impact",
+  "release",
+  "finish",
+];
 
 export default function SwingReportPage() {
   const params = useParams();
   const reportId = params.id as string;
   const [report, setReport] = useState<SwingReport | null>(null);
-  const [activePhase, setActivePhase] = useState("address");
+  const [activePhase, setActivePhase] = useState("setup_address");
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     const res = await fetch(`/api/swings/${reportId}/status`);
@@ -31,6 +44,23 @@ export default function SwingReportPage() {
     }
     setReport(data.report);
   }, [reportId]);
+
+  const retryAnalysis = useCallback(async () => {
+    setRetrying(true);
+    setError(null);
+    setReport((current) => current ? { ...current, status: "processing", error_message: null } : current);
+    try {
+      const res = await fetch(`/api/swings/${reportId}/analyze`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Analysis retry failed.");
+      await fetchStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Analysis retry failed.");
+      await fetchStatus();
+    } finally {
+      setRetrying(false);
+    }
+  }, [fetchStatus, reportId]);
 
   useEffect(() => {
     fetchStatus();
@@ -54,13 +84,15 @@ export default function SwingReportPage() {
     );
   }
 
-  if (!report || report.status === "processing") {
+  if (!report || report.status === "processing" || retrying) {
     return (
       <div className="min-h-screen">
         <AppNav />
         <main className="mx-auto max-w-4xl px-4 py-16 text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--color-border)] border-t-[var(--color-accent)]" />
-          <h1 className="mt-6 text-2xl font-semibold">Building your coaching blueprint</h1>
+            <h1 className="mt-6 text-2xl font-semibold">
+            {retrying ? "Retrying your analysis" : "Building your swing analysis"}
+          </h1>
           <p className="mt-2 text-[var(--color-muted)]">
             Watching your swing and mapping feels, cause-and-effect, and milestones. Usually 1–3 minutes.
           </p>
@@ -77,9 +109,14 @@ export default function SwingReportPage() {
           <Card>
             <h1 className="text-xl font-semibold text-red-500">Analysis failed</h1>
             <p className="mt-2 text-[var(--color-muted)]">{report.error_message}</p>
-            <a href="/upload" className="mt-4 inline-block">
-              <Button>Try again</Button>
-            </a>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button onClick={retryAnalysis} disabled={retrying}>
+                {retrying ? "Retrying..." : "Retry analysis"}
+              </Button>
+              <a href="/upload" className="inline-block">
+                <Button variant="ghost">Upload Another Swing</Button>
+              </a>
+            </div>
           </Card>
         </main>
       </div>
@@ -87,8 +124,11 @@ export default function SwingReportPage() {
   }
 
   const coaching = parseCoachingContent(report);
+  const coachReport = coaching ? getCoachSummaryReport(coaching) : null;
   const keyFrames = (report.key_frame_urls ?? []) as KeyFrameUrl[];
-  const galleryFrames = PHASES.map((phase) => ({
+  const phases =
+    keyFrames.length > 0 ? keyFrames.map((f) => f.phase) : PHASES;
+  const galleryFrames = phases.map((phase) => ({
     phase,
     url: keyFrames.find((f) => f.phase === phase)?.url ?? null,
   }));
@@ -100,8 +140,8 @@ export default function SwingReportPage() {
         {!report.ai_narrative_available && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
             {report.error_message
-              ? `Blueprint unavailable: ${report.error_message}`
-              : "Blueprint unavailable — please try uploading again."}
+              ? `Analysis unavailable: ${report.error_message}`
+              : "Analysis unavailable — please try uploading again."}
           </div>
         )}
 
@@ -111,12 +151,11 @@ export default function SwingReportPage() {
               {coaching.personalized_greeting}
             </p>
           )}
-          <p className="mt-4 text-sm font-medium uppercase tracking-widest text-[var(--color-accent)]">
-            Your focus
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold">
-            {coaching?.diagnostic.headline ?? report.main_diagnosis ?? "Swing blueprint"}
-          </h1>
+          {report.swing_mode && (
+            <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+              {SWING_MODE_LABELS[report.swing_mode]}
+            </p>
+          )}
           <p className="mt-1 text-sm text-[var(--color-muted)]">
             {new Date(report.created_at).toLocaleString()}
           </p>
@@ -124,61 +163,12 @@ export default function SwingReportPage() {
 
         {coaching ? (
           <>
-            <section className="mt-10">
-              <h2 className="text-lg font-semibold">What&apos;s happening</h2>
-              <Card className="mt-3 space-y-4">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">Ball flight</p>
-                  <ReportMarkdown content={coaching.diagnostic.what_your_eye_sees} className="mt-1" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">Root cause</p>
-                  <ReportMarkdown content={coaching.diagnostic.mechanical_cause} className="mt-1" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">Chain reaction</p>
-                  <ReportMarkdown content={coaching.diagnostic.kinetic_chain} className="mt-1" />
-                </div>
-              </Card>
-            </section>
-
-            <section className="mt-10">
-              <h2 className="text-lg font-semibold">Your feels</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">One phase at a time. Watch the clip. Lock in the feel.</p>
-              <Card className="mt-4">
-                <BlueprintPhaseViewer
-                  reportId={reportId}
-                  headline={coaching.blueprint.headline}
-                  intro={coaching.blueprint.intro}
-                  steps={coaching.blueprint.steps}
-                />
-              </Card>
-            </section>
-
-            <section className="mt-10">
-              <h2 className="text-lg font-semibold">This week</h2>
-              <Card className="mt-4">
-                <MilestoneRoadmap
-                  reportId={reportId}
-                  weeklyFocus={coaching.roadmap.weekly_focus}
-                  milestones={coaching.roadmap.milestones}
-                  day7Test={coaching.roadmap.day_7_test}
-                />
-              </Card>
-            </section>
-
-            <Card className="mt-6">
-              <h2 className="text-sm font-medium">Next film</h2>
-              <ReportMarkdown
-                content={coaching.next_upload_focus || report.next_upload_focus || ""}
-                className="mt-2"
-              />
-            </Card>
+            {coachReport && <CoachSummaryReport report={coachReport} />}
           </>
         ) : (
           <Card className="mt-8">
             <p className="text-[var(--color-muted)]">
-              This is an older report format. Upload a new swing to get the full 3-part coaching blueprint.
+              This is an older report format. Upload a new swing to get the latest coaching analysis.
             </p>
             {report.main_diagnosis && (
               <ReportMarkdown content={report.main_diagnosis} className="mt-4" />
@@ -188,7 +178,7 @@ export default function SwingReportPage() {
 
         {keyFrames.length > 0 && (
           <section className="mt-12">
-            <h2 className="mb-4 text-xl font-semibold">Swing reference frames</h2>
+            <h2 className="mb-4 text-xl font-semibold">Swing Reference Frames</h2>
             <Card>
               <KeyFrameGallery
                 frames={galleryFrames}

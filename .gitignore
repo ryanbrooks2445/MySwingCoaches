@@ -13,11 +13,14 @@ analysis-service/.env
 
 # Next.js
 apps/web/.next/
+apps/web/.next-stale-*/
 apps/web/out/
+apps/web/tsconfig.tsbuildinfo
 
 # Python
 analysis-service/.pytest_cache/
 *.egg-info/
+*.pt
 
 # OS
 .DS_Store

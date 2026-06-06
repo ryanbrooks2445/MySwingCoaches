@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { requireGolferProfile } from "@/lib/require-golfer-profile";
 import { canRunAnalysis } from "@/lib/subscription";
 import { ALLOWED_VIDEO_TYPES, MAX_VIDEO_SIZE_BYTES } from "@/lib/utils";
 
@@ -10,11 +11,22 @@ function isAllowedVideo(fileName: string, mimeType: string): boolean {
   return ALLOWED_VIDEO_TYPES.includes(mimeType);
 }
 
+function cleanText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim();
+  return cleaned ? cleaned.slice(0, 300) : null;
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const profileCheck = await requireGolferProfile(user.id);
+  if (!profileCheck.ok) {
+    return NextResponse.json({ error: profileCheck.error }, { status: 403 });
   }
 
   const quota = await canRunAnalysis(user.id);
@@ -30,7 +42,25 @@ export async function POST(request: NextRequest) {
     originalFilename,
     mimeType,
     sizeBytes,
+    swingMode = "full_swing",
+    intake: rawIntake = {},
   } = body;
+  const allowedCameraAngles = ["face-on", "down-the-line", "unknown"];
+  const rawCameraAngle = cleanText(rawIntake?.cameraAngle) || "unknown";
+  const intake = {
+    ballFlight: cleanText(rawIntake?.ballFlight),
+    userGoal: cleanText(rawIntake?.userGoal),
+    clubUsed: cleanText(rawIntake?.clubUsed),
+    practiceAvailability: cleanText(rawIntake?.practiceAvailability),
+    handicap: cleanText(rawIntake?.handicap),
+    cameraAngle: allowedCameraAngles.includes(rawCameraAngle) ? rawCameraAngle : "unknown",
+    handedness: cleanText(rawIntake?.handedness),
+  };
+
+  const allowedModes = ["full_swing", "chipping", "putting"];
+  if (!allowedModes.includes(swingMode)) {
+    return NextResponse.json({ error: "Invalid swing mode" }, { status: 400 });
+  }
 
   if (!videoId || !reportId || !storagePath || !originalFilename || !sizeBytes) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -71,6 +101,8 @@ export async function POST(request: NextRequest) {
     original_filename: originalFilename,
     mime_type: mimeType || "video/mp4",
     size_bytes: sizeBytes,
+    swing_mode: swingMode,
+    camera_angle: intake.cameraAngle,
     status: "processing",
   });
 
@@ -82,6 +114,8 @@ export async function POST(request: NextRequest) {
     id: reportId,
     user_id: user.id,
     video_id: videoId,
+    swing_mode: swingMode,
+    pose_landmarks: { intake },
     status: "processing",
   });
 

@@ -22,7 +22,7 @@ export function KeyFrameGallery({ frames, activePhase, onPhaseChange }: KeyFrame
                 : "bg-[var(--color-border)]/50 hover:bg-[var(--color-border)]"
             }`}
           >
-            {frame.phase.replace("_", " ")}
+            {frame.phase.replaceAll("_", " ")}
           </button>
         ))}
       </div>

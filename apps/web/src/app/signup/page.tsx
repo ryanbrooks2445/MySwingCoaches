@@ -13,12 +13,14 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pendingLogin, setPendingLogin] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setPendingLogin(false);
     const supabase = createClient();
     const { data, error: authError } = await supabase.auth.signUp({
       email,
@@ -31,9 +33,7 @@ export default function SignupPage() {
       return;
     }
     if (data.user && !data.session) {
-      setError(
-        "Check your email to confirm your account, then log in. For local dev, disable email confirmation in Supabase → Authentication → Sign In / Providers → Email."
-      );
+      setPendingLogin(true);
       return;
     }
     router.push("/dashboard");
@@ -44,7 +44,19 @@ export default function SignupPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <h1 className="text-2xl font-semibold">Create account</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">Start with 1 free swing analysis</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">Create your account, then buy an analysis credit to upload.</p>
+
+        {pendingLogin ? (
+          <div className="mt-6 space-y-4 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 p-4">
+            <p className="text-sm font-medium">Account created</p>
+            <p className="text-sm text-[var(--color-muted)]">
+              Check your inbox for a confirmation link. Once confirmed, log in to continue.
+            </p>
+            <Link href="/login">
+              <Button className="w-full">Log in</Button>
+            </Link>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <input
             type="text"
@@ -75,6 +87,8 @@ export default function SignupPage() {
             {loading ? "Creating account..." : "Create account"}
           </Button>
         </form>
+        )}
+
         <p className="mt-4 text-center text-sm text-[var(--color-muted)]">
           Already have an account?{" "}
           <Link href="/login" className="text-[var(--color-accent)] hover:underline">

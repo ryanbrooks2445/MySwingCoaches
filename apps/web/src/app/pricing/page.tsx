@@ -1,91 +1,99 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PLAN_PRICES, type SubscriptionPlan } from "@/lib/types";
+import {
+  PRICE_PER_ANALYSIS_DISPLAY,
+  SWING_MODE_LABELS,
+  SWING_MODES,
+} from "@/lib/pricing";
 
 export default function PricingPage() {
   const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function selectPlan(plan: SubscriptionPlan) {
-    setLoading(plan);
+  async function purchaseAnalysis() {
+    setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/subscriptions/select-plan", {
+      const res = await fetch("/api/subscriptions/purchase-analysis", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      if (plan === "free") {
-        setMessage(`Plan updated to ${plan}. Stripe checkout is stubbed — no payment required.`);
-      } else {
-        setMessage(`Plan selection saved (${plan}). Stripe checkout coming soon — stub only, no charge.`);
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
       }
+      setMessage(
+        `${data.message} You have ${data.analyses_remaining} upload${data.analyses_remaining === 1 ? "" : "s"} ready.`
+      );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to update plan");
+      setMessage(err instanceof Error ? err.message : "Purchase failed");
     } finally {
-      setLoading(null);
+      setLoading(false);
     }
   }
 
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="text-center">
           <h1 className="text-3xl font-semibold">Pricing</h1>
           <p className="mt-2 text-[var(--color-muted)]">
-            Choose a plan. Payment integration is stubbed for MVP.
+            Pay per upload. No subscription required.
           </p>
-          <span className="mt-2 inline-block rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-500">
-            Stripe integration — placeholder
-          </span>
         </div>
 
         {message && (
-          <div className="mx-auto mt-6 max-w-lg rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-3 text-sm">
+          <div className="mx-auto mt-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-3 text-sm">
             {message}
           </div>
         )}
 
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {(Object.entries(PLAN_PRICES) as [SubscriptionPlan, typeof PLAN_PRICES.free][]).map(
-            ([plan, info]) => (
-              <Card key={plan} className="flex flex-col">
-                <h2 className="text-xl font-semibold">{info.name}</h2>
-                <p className="mt-2 text-3xl font-semibold">{info.price}</p>
-                <ul className="mt-6 flex-1 space-y-2 text-sm text-[var(--color-muted)]">
-                  {info.features.map((f) => (
-                    <li key={f}>• {f}</li>
-                  ))}
-                </ul>
-                <Button
-                  className="mt-6 w-full"
-                  variant={plan === "player" ? "primary" : "secondary"}
-                  disabled={loading === plan}
-                  onClick={() => selectPlan(plan)}
-                >
-                  {loading === plan ? "Updating..." : plan === "free" ? "Current / Free" : "Subscribe (stub)"}
-                </Button>
-              </Card>
-            )
-          )}
-        </div>
+        <Card className="mt-10 text-center">
+          <h2 className="text-xl font-semibold">One Golf Swing Analysis</h2>
+          <p className="mt-4 text-5xl font-semibold">{PRICE_PER_ANALYSIS_DISPLAY}</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">per video upload</p>
+          <ul className="mx-auto mt-8 max-w-sm space-y-2 text-left text-sm text-[var(--color-muted)]">
+            <li>• Full swing, chipping, or putting — same price</li>
+            <li>• Clear diagnosis, feels, and a 7-day plan</li>
+            <li>• Drill clips matched to your main fault</li>
+            <li>• Personalized to your profile and swing history</li>
+          </ul>
+          <Button
+            className="mt-8 w-full"
+            disabled={loading}
+            onClick={purchaseAnalysis}
+          >
+            {loading ? "Processing..." : `Buy 1 Analysis — ${PRICE_PER_ANALYSIS_DISPLAY}`}
+          </Button>
+          <Link href="/upload" className="mt-4 block text-sm text-[var(--color-accent)] hover:underline">
+            Go to upload →
+          </Link>
+        </Card>
 
         <Card className="mt-8">
-          <h2 className="text-lg font-semibold">Coach Review add-on</h2>
-          <p className="mt-2 text-sm text-[var(--color-muted)]">
-            Request a human coach to review your AI report and add personalized notes.
-            Available as an add-on when Stripe is integrated.
-          </p>
-          <Button className="mt-4" variant="secondary" disabled>
-            Request coach review (stub)
-          </Button>
+          <h2 className="text-lg font-semibold">Modes</h2>
+          <ul className="mt-4 space-y-3 text-sm text-[var(--color-muted)]">
+            {SWING_MODES.map((mode) => (
+              <li key={mode}>
+                <span className="font-medium text-[var(--color-foreground)]">
+                  {SWING_MODE_LABELS[mode]}
+                </span>
+                {" — "}
+                {mode === "full_swing"
+                  ? "Driver through wedges — full motion."
+                  : mode === "chipping"
+                    ? "Short game around the green."
+                    : "Stroke mechanics on the green."}
+              </li>
+            ))}
+          </ul>
         </Card>
       </main>
     </div>

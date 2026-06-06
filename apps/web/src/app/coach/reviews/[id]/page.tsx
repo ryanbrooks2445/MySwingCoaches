@@ -6,7 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { ReportMarkdown } from "@/components/ReportMarkdown";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { parseCoachingContent } from "@/lib/coaching";
+import { getFeelBlueprint, parseCoachingContent } from "@/lib/coaching";
 import type { SwingReport } from "@/lib/types";
 
 export default function CoachReviewDetailPage() {
@@ -58,6 +58,7 @@ export default function CoachReviewDetailPage() {
   }
 
   const coaching = parseCoachingContent(report);
+  const feel = coaching ? getFeelBlueprint(coaching) : null;
 
   return (
     <div className="min-h-screen">
@@ -68,12 +69,16 @@ export default function CoachReviewDetailPage() {
 
         <Card className="mt-8">
           <h2 className="font-semibold">AI blueprint summary</h2>
-          {coaching ? (
+          {coaching && feel ? (
             <div className="mt-4 space-y-4">
-              <p className="text-xl font-semibold text-[var(--color-accent)]">
-                {coaching.diagnostic.headline}
+              <p className="text-xl font-semibold text-[var(--color-accent)]">{feel.headline}</p>
+              <ReportMarkdown content={feel.opening_narrative} />
+              <p className="text-sm text-[var(--color-muted)]">
+                Ceiling: {feel.current_ceiling.slice(0, 120)}…
               </p>
-              <ReportMarkdown content={coaching.diagnostic.kinetic_chain} />
+              <p className="text-sm text-[var(--color-muted)]">
+                Feels: {feel.body_part_cue} · {feel.spatial_cue}
+              </p>
               <p className="text-sm text-[var(--color-muted)]">
                 Weekly focus: {coaching.roadmap.weekly_focus.replace(/\*\*/g, "")}
               </p>

@@ -41,9 +41,14 @@ Fill in:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project → Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase project → Settings → API (server only) |
 | `GEMINI_API_KEY` | Google AI Studio |
-| `ANALYSIS_SERVICE_URL` | `http://localhost:8001` |
+| `ANALYSIS_SERVICE_URL` | `http://localhost:8001` locally; deployed FastAPI URL in production |
 | `ANALYSIS_SERVICE_SECRET` | Shared secret between Next.js and FastAPI |
+| `ALLOWED_CORS_ORIGINS` | Comma-separated web origins allowed by the analysis service |
 | `SUPABASE_URL` | Same as `NEXT_PUBLIC_SUPABASE_URL` (analysis-service `.env`) |
+| `STRIPE_SECRET_KEY` | Stripe secret key for Checkout |
+| `STRIPE_PRICE_ID_ANALYSIS` | Stripe Price ID for one analysis credit |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for `/api/stripe/webhook` |
+| `ENABLE_DEV_CREDIT_STUB` | `true` only for local testing without Stripe; keep `false` in production |
 
 ### 2. Supabase database
 
@@ -59,6 +64,14 @@ supabase db push
 ```
 
 Storage buckets `swing-videos` and `swing-frames` are created by the migration.
+
+**Sign-up without email confirmation (recommended for dev):** In the [Supabase Dashboard](https://supabase.com/dashboard) → **Authentication** → **Sign In / Providers** → **Email**, disable **Confirm email**. Save. Existing unconfirmed users may still need a one-time SQL confirm in **SQL Editor**:
+
+```sql
+UPDATE auth.users
+SET email_confirmed_at = NOW()
+WHERE email_confirmed_at IS NULL;
+```
 
 ### 3. Install dependencies
 
@@ -119,9 +132,15 @@ UPDATE profiles SET role = 'coach' WHERE id = 'USER_UUID';
 
 Then visit `/coach/reviews`.
 
-## Pricing (stub)
+## Pricing / Stripe
 
-Plans are stored in `subscriptions`. UI at `/pricing` updates plan without Stripe. See `docs/PRODUCTION-TODOS.md` for payment integration.
+Plans are stored in `subscriptions`. `/pricing` creates a Stripe Checkout session when `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID_ANALYSIS` are set. Stripe must send `checkout.session.completed` events to:
+
+```text
+https://YOUR_WEB_APP_DOMAIN/api/stripe/webhook
+```
+
+The webhook verifies `STRIPE_WEBHOOK_SECRET`, records the Stripe session idempotently in `stripe_checkout_sessions`, and adds one prepaid analysis credit. For local-only testing, set `ENABLE_DEV_CREDIT_STUB=true`; never enable that flag in production.
 
 ## Disclaimer
 

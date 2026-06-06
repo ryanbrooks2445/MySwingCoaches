@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/StatusBadge";
+import { SWING_MODE_LABELS } from "@/lib/pricing";
 import type { SwingReport, SwingVideo } from "@/lib/types";
 import { getReportFocusLabel } from "@/lib/coaching";
 
@@ -23,6 +24,9 @@ export function SwingCard({
           <div className="min-w-0">
             <p className="truncate font-medium">{video.original_filename ?? "Swing video"}</p>
             <p className="text-sm text-[var(--color-muted)]">
+              {video.swing_mode && video.swing_mode in SWING_MODE_LABELS
+                ? `${SWING_MODE_LABELS[video.swing_mode]} · `
+                : ""}
               {new Date(video.created_at).toLocaleDateString()}
             </p>
             {focus && report?.status === "ready" && (
