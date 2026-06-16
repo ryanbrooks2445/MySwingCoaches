@@ -13,6 +13,7 @@ from app.trace_log import log_trace
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("swing.trace").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 app = FastAPI(
     title="MySwingCoaches Analysis Service",
@@ -22,7 +23,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,7 +40,6 @@ def analyze(
     request: AnalyzeRequest,
     x_analysis_secret: str | None = Header(default=None),
 ):
-    settings = get_settings()
     if settings.analysis_service_secret and x_analysis_secret != settings.analysis_service_secret:
         raise HTTPException(status_code=401, detail="Invalid analysis service secret")
 

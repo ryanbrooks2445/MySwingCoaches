@@ -183,7 +183,7 @@ def pick_drill_slug(
 
 def critique_menu_for_prompt(swing_mode: SwingMode = "full_swing") -> str:
     if swing_mode == "chipping":
-        return """CRITIQUE MENU (pick ONE that matches film — never default to full-swing faults):
+        return """COVERAGE MAP (inspect all, diagnose only what the film supports — never default to full-swing faults):
 - Setup: weight forward, ball position, landing spot intent
 - Backswing length vs distance needed
 - Hinge amount / wrist flip / scoop
@@ -191,14 +191,14 @@ def critique_menu_for_prompt(swing_mode: SwingMode = "full_swing") -> str:
 - Face & path at impact
 - Tempo & finish height"""
     if swing_mode == "putting":
-        return """CRITIQUE MENU (pick ONE that matches film):
+        return """COVERAGE MAP (inspect all, diagnose only what the film supports):
 - Setup: eyes, posture, grip pressure, aim
 - Backstroke path & length
 - Tempo & transition smoothness
 - Face angle & start line at impact
 - Head stability / steering
 - Distance control"""
-    return """CRITIQUE MENU (pick ONE earliest Constraint that matches film — OTT is NOT the default):
+    return """COVERAGE MAP (inspect all, then pick ONE earliest Constraint that the film actually supports — OTT is NOT the default):
 1. Setup & launchpad — ball position, hinge, alignment, balance
 2. Takeaway — arms-only lift, club off-plane early
 3. Sway vs rotation — lateral slide instead of turn

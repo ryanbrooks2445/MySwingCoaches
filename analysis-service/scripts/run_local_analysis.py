@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.frame_extractor import extract_frames
 from app.frame_sampler import sample_keyframe_indices
 from app.gemini_coach import generate_coaching_report
+from app.report_audit import audit_report_quality
 
 
 def main():
@@ -36,12 +37,22 @@ def main():
         video_path=args.video_path,
         frames=frames,
         keyframe_indices=keyframe_indices,
-        fps=fps,
         history_summary=None,
     )
     print(f"AI narrative available: {ai_ok}")
     if gemini_meta:
         print(f"Gemini meta: {json.dumps(gemini_meta)}")
+    if not ai_ok:
+        print("Report audit: FAIL — AI analysis unavailable")
+        print(f"\nCoaching Report:\n{json.dumps(report.model_dump(), indent=2)}")
+        sys.exit(2)
+    try:
+        audit_report_quality(report, swing_mode="full_swing", player_context=None)
+        print("Report audit: PASS")
+    except Exception as exc:
+        print(f"Report audit: FAIL — {exc}")
+        print(f"\nCoaching Report:\n{json.dumps(report.model_dump(), indent=2)}")
+        sys.exit(3)
     print(f"\nCoaching Report:\n{json.dumps(report.model_dump(), indent=2)}")
 
 

@@ -16,10 +16,9 @@ AI golf swing analysis platform. Upload a swing video and get a Gemini-powered c
 
 ```
 MySwingCoaches/
-├── apps/web/              # Next.js App Router frontend
+├── src/                   # Next.js App Router frontend
 ├── analysis-service/      # FastAPI + OpenCV + Gemini
 ├── supabase/migrations/   # Postgres schema + RLS + storage
-├── packages/shared-types/ # Shared TypeScript types
 └── docs/                  # Production TODOs
 ```
 
@@ -29,7 +28,7 @@ MySwingCoaches/
 
 ```bash
 cd ~/MySwingCoaches
-cp .env.example apps/web/.env.local
+cp .env.example .env.local
 cp analysis-service/.env.example analysis-service/.env
 ```
 
@@ -43,12 +42,11 @@ Fill in:
 | `GEMINI_API_KEY` | Google AI Studio |
 | `ANALYSIS_SERVICE_URL` | `http://localhost:8001` locally; deployed FastAPI URL in production |
 | `ANALYSIS_SERVICE_SECRET` | Shared secret between Next.js and FastAPI |
-| `ALLOWED_CORS_ORIGINS` | Comma-separated web origins allowed by the analysis service |
 | `SUPABASE_URL` | Same as `NEXT_PUBLIC_SUPABASE_URL` (analysis-service `.env`) |
 | `STRIPE_SECRET_KEY` | Stripe secret key for Checkout |
-| `STRIPE_PRICE_ID_ANALYSIS` | Stripe Price ID for one analysis credit |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for `/api/stripe/webhook` |
-| `ENABLE_DEV_CREDIT_STUB` | `true` only for local testing without Stripe; keep `false` in production |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Optional for future Stripe Elements; Checkout redirect does not require it |
+| `ENABLE_DEV_CREDIT_STUB` | Local-only fallback for testing credits without Stripe; keep `false` in production |
 
 ### 2. Supabase database
 
@@ -77,10 +75,10 @@ WHERE email_confirmed_at IS NULL;
 
 ```bash
 # Frontend
-cd apps/web && npm install
+npm install
 
 # Analysis service
-cd ../../analysis-service
+cd analysis-service
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -91,7 +89,7 @@ pip install -r requirements.txt
 **Terminal 1 — Next.js**
 
 ```bash
-cd apps/web
+cd ~/MySwingCoaches
 npm run dev
 ```
 
@@ -134,13 +132,13 @@ Then visit `/coach/reviews`.
 
 ## Pricing / Stripe
 
-Plans are stored in `subscriptions`. `/pricing` creates a Stripe Checkout session when `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID_ANALYSIS` are set. Stripe must send `checkout.session.completed` events to:
+Plans are stored in `subscriptions`. `/pricing` creates a Stripe Checkout session when `STRIPE_SECRET_KEY` is set. The app creates the one-analysis line item dynamically from the current intro/standard price in `src/lib/pricing.ts`. Stripe must send `checkout.session.completed` events to:
 
 ```text
 https://YOUR_WEB_APP_DOMAIN/api/stripe/webhook
 ```
 
-The webhook verifies `STRIPE_WEBHOOK_SECRET`, records the Stripe session idempotently in `stripe_checkout_sessions`, and adds one prepaid analysis credit. For local-only testing, set `ENABLE_DEV_CREDIT_STUB=true`; never enable that flag in production.
+The webhook verifies `STRIPE_WEBHOOK_SECRET`, records the Stripe session idempotently in `stripe_checkout_sessions`, and adds one prepaid analysis credit. For local-only testing without Stripe, set `ENABLE_DEV_CREDIT_STUB=true`; production blocks the stub routes.
 
 ## Disclaimer
 

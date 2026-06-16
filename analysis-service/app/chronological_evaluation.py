@@ -21,6 +21,22 @@ STEP 0 — THE GROUND-UP SETUP CHECK (do this FIRST, before takeaway/transition/
 
 If ANY setup item is Constraint, that is your foundational_missing_piece until proven otherwise on film.
 
+STEP 0b — TOP-OF-BACKSWING STRUCTURE CHECK (mandatory, even when setup is the main fix):
+
+Grade these at the top checkpoint and store visible misses in diagnostic_checkpoints/evidence_metrics:
+1) Lead arm structure
+   - Relatively extended with useful width, OR clearly bent/collapsed across the chest?
+   - If lead arm bend is visible, mention it in Setup to finish or Advanced Evidence even if setup remains the primary fix.
+
+2) Width at the top
+   - Hands have space away from the chest, OR arms collapse and narrow the swing arc?
+
+3) Overswing / arm runoff
+   - Body turn and arm swing stop together, OR arms keep going after the body stops?
+
+If setup is also broken, setup can remain the main fix, but do NOT ignore a clear lead-arm bend.
+Write the chain as: setup/posture/balance → arm collapse or loss of width → tougher sequencing/strike.
+
 THE CAUSE-AND-EFFECT LINK (user-facing copy when setup drives downstream issues):
 - You MUST connect setup to what happens later. Example pattern:
   "Because your weight started stuck back on your heels at setup, your body naturally had to lunge forward

@@ -7,6 +7,7 @@ from app.frame_extractor import download_video, extract_frames
 from app.frame_sampler import sample_keyframe_indices
 from app.gemini_coach import generate_coaching_report
 from app.persistence import mark_analysis_failed, persist_analysis_result, upload_key_frames
+from app.report_audit import audit_report_quality
 from app.schemas import AnalyzeRequest, CoachingReportSchema
 from app.trace_log import log_trace
 
@@ -67,6 +68,15 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
             trace_id=trace_id,
             report_id=report_id,
             user_id=user_id,
+        )
+
+        if not ai_ok:
+            raise ValueError(gemini_meta.get("error") or "AI analysis unavailable")
+
+        audit_report_quality(
+            report,
+            swing_mode=request.swing_mode,
+            player_context=request.player_context,
         )
 
         persist_analysis_result(

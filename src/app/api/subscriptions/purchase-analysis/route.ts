@@ -7,6 +7,13 @@ import { isStripeConfigured } from "@/lib/stripe";
 
 /** Dev fallback when Stripe keys are not set. Production uses /api/stripe/checkout. */
 export async function POST() {
+  if (process.env.NODE_ENV === "production" || process.env.ENABLE_DEV_CREDIT_STUB !== "true") {
+    return NextResponse.json(
+      { error: "Dev credit stub is disabled. Configure Stripe Checkout to sell analysis credits." },
+      { status: 403 }
+    );
+  }
+
   if (isStripeConfigured()) {
     return NextResponse.json(
       { error: "Use Stripe Checkout. Call POST /api/stripe/checkout instead." },

@@ -78,12 +78,15 @@ export async function buildPlayerContext(
   playerAge: number | null;
   yearsPlaying: number | null;
   physicalLimitations: string | null;
+  average9Score: number | null;
+  typicalMiss: string | null;
+  primaryGoal: string | null;
 }> {
   const supabase = createServiceClient();
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, age, years_playing, physical_limitations")
+    .select("display_name, age, years_playing, physical_limitations, average_9_score, typical_miss, primary_goal")
     .eq("id", userId)
     .single();
 
@@ -128,6 +131,9 @@ export async function buildPlayerContext(
 
   const lines: string[] = [];
   if (playerName) lines.push(`Player first name: ${playerName}`);
+  if (profile?.average_9_score) lines.push(`Average 9-hole score: ${profile.average_9_score}.`);
+  if (profile?.typical_miss) lines.push(`Typical miss: ${profile.typical_miss}.`);
+  if (profile?.primary_goal) lines.push(`Main goal: ${profile.primary_goal}.`);
   if (swingMode) lines.push(`Mode for this upload: ${swingMode}.`);
   lines.push(`Completed ${swingMode ?? "total"} analyses before this upload: ${completed}`);
   lines.push(`This is their #${swingNumber} analysis in this mode.`);
@@ -159,6 +165,9 @@ export async function buildPlayerContext(
     playerAge: profile?.age ?? null,
     yearsPlaying: profile?.years_playing ?? null,
     physicalLimitations: profile?.physical_limitations ?? null,
+    average9Score: profile?.average_9_score ?? null,
+    typicalMiss: profile?.typical_miss ?? null,
+    primaryGoal: profile?.primary_goal ?? null,
   };
 }
 

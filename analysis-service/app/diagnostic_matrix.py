@@ -27,7 +27,9 @@ A) Takeaway & backswing (loading the spring)
 - Thoracic rotation vs arm lift ("fake shoulder turn")
 - Sway vs turn (lateral slide off ball vs spine-axis rotation)
 - Wrist cock/hinge vs early cast
-- Swing depth & width at top; lead elbow collapse
+- Lead arm structure at top: extended width vs clear bend/collapse
+- Swing depth & width at top: hands away from chest vs narrow/collapsed arc
+- Arm runoff / overswing: arms keep going after body turn stops
 
 B) Transition & downswing (unleashing power)
 - Sequencing: ground-up (hips→torso→arms→club) vs top-down (arms first)
@@ -82,15 +84,20 @@ STEP 3 — Choose report_mode (CRITICAL — do not force a flaw):
 
 Set advanced_details.report_mode to "maintenance" OR "development".
 
-USE "maintenance" when the motion on film is already elite / tour-caliber / textbook:
-- Zero Constraint grades on visible checkpoints, AND at most ONE minor Compensation, OR
-- At least 75% of visible graded checkpoints are Optimal
-- No visible miss on film (NEVER invent slice/fade/hook/chunk/skull/push/pull unless you SEE it)
+USE "maintenance" only when the motion on film is already elite / tour-caliber / textbook:
+- Zero Constraint grades on visible checkpoints, AND
+- At most ONE minor Compensation, AND
+- At least 90% of visible graded checkpoints are Optimal, AND
+- Setup, transition, impact, and finish are all clearly visible and Optimal, AND
+- No visible miss on film (NEVER invent slice/fade/hook/chunk/skull/push/pull unless you SEE it), AND
+- You cannot name one practical improvement a good in-person coach would give this golfer.
 {maintenance_extra}
 
 USE "development" when there IS a real earliest Constraint or Compensation chain to unlock.
 
-If unsure between modes, prefer maintenance over inventing a flaw. Great motion gets praise, not a fake fix.
+If unsure between "solid but coachable" and maintenance, choose development with a medium confidence note.
+Reserve maintenance for clearly elite / tour-caliber motion on visible checkpoints. Great motion gets praise,
+but a paid analysis should still name the most useful visible improvement when the swing is not clearly elite.
 
 STEP 3b — PRIORITIZATION (development mode only):
 {prioritization}
@@ -130,7 +137,10 @@ def diagnostic_matrix_for_prompt(swing_mode: SwingMode = "full_swing") -> str:
 
     return f"""{_diagnostic_workflow(swing_mode)}
 
-MASTER CHECKLIST (grade internally; do not dump this list to the user):
+MASTER COVERAGE MAP (grade internally; do not dump this list to the user):
+
+This is not a diagnosis menu and not a recommendation list. Use it only to make sure you inspect
+the whole motion. The actual diagnosis must come from what is visible in this specific swing video.
 
 {PILLAR_1_HUMAN}
 

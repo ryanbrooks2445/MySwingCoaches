@@ -14,6 +14,9 @@ interface GolferProfileFormProps {
 export function GolferProfileForm({ onCompleteChange, className }: GolferProfileFormProps) {
   const [age, setAge] = useState("");
   const [yearsPlaying, setYearsPlaying] = useState("");
+  const [average9Score, setAverage9Score] = useState("");
+  const [typicalMiss, setTypicalMiss] = useState("");
+  const [primaryGoal, setPrimaryGoal] = useState("");
   const [limitations, setLimitations] = useState("");
   const [noLimitations, setNoLimitations] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -31,6 +34,9 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
         const p = data.profile as GolferProfileFields;
         if (p.age != null) setAge(String(p.age));
         if (p.years_playing != null) setYearsPlaying(String(p.years_playing));
+        if (p.average_9_score != null) setAverage9Score(String(p.average_9_score));
+        if (p.typical_miss) setTypicalMiss(p.typical_miss);
+        if (p.primary_goal) setPrimaryGoal(p.primary_goal);
         if (p.physical_limitations === "None reported") {
           setNoLimitations(true);
           setLimitations("");
@@ -66,6 +72,9 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
           years_playing: yearsPlaying,
           physical_limitations: limitations,
           no_physical_limitations: noLimitations,
+          average_9_score: average9Score,
+          typical_miss: typicalMiss,
+          primary_goal: primaryGoal,
         }),
       });
       const data = await res.json();
@@ -87,6 +96,9 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
     age: age ? parseInt(age, 10) : null,
     years_playing: yearsPlaying ? parseInt(yearsPlaying, 10) : null,
     physical_limitations: noLimitations ? "None reported" : limitations,
+    average_9_score: average9Score ? parseInt(average9Score, 10) : null,
+    typical_miss: typicalMiss,
+    primary_goal: primaryGoal,
   });
 
   if (loading) {
@@ -151,6 +163,55 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
             />
           </label>
         </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="font-medium">Average 9-hole score</span>
+            <input
+              type="number"
+              min={25}
+              max={90}
+              required
+              value={average9Score}
+              onChange={(e) => {
+                setAverage9Score(e.target.value);
+                setSaved(false);
+              }}
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+              placeholder="e.g. 58"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium">Typical miss</span>
+            <input
+              required
+              maxLength={160}
+              value={typicalMiss}
+              onChange={(e) => {
+                setTypicalMiss(e.target.value);
+                setSaved(false);
+              }}
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+              placeholder="e.g. tops, slices, chunks"
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm">
+          <span className="font-medium">Main goal</span>
+          <input
+            required
+            maxLength={160}
+            value={primaryGoal}
+            onChange={(e) => {
+              setPrimaryGoal(e.target.value);
+              setSaved(false);
+            }}
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+            placeholder="e.g. make better contact and break 50"
+          />
+        </label>
 
         <div>
           <label className="block text-sm font-medium">Physical constraints</label>

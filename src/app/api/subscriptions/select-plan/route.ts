@@ -4,6 +4,13 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { PLAN_LIMITS, type SubscriptionPlan } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === "production" || process.env.ENABLE_DEV_CREDIT_STUB !== "true") {
+    return NextResponse.json(
+      { error: "Dev plan stub is disabled. Configure Stripe before changing plans." },
+      { status: 403 }
+    );
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

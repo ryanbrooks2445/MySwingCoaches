@@ -21,6 +21,127 @@ from app.schemas import (
 _VALID_GRADES = frozenset({"optimal", "compensation", "constraint", "not_visible"})
 
 
+def _cap_words(text: str, max_words: int) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return ""
+    words = cleaned.split(" ")
+    if len(words) <= max_words:
+        return cleaned
+    return " ".join(words[:max_words]).rstrip(" ,;:") + "."
+
+
+def _cap_section(text: str, max_words: int) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return ""
+    if len(cleaned.split()) <= max_words:
+        return cleaned
+
+    pieces = re.split(r"(?<=[.!?])\s+", cleaned)
+    kept: list[str] = []
+    count = 0
+    for piece in pieces:
+        words = piece.split()
+        if not words:
+            continue
+        if kept and count + len(words) > max_words:
+            break
+        kept.append(piece)
+        count += len(words)
+    if kept:
+        return " ".join(kept).strip()
+    return _cap_words(cleaned, max_words)
+
+
+def _cap_drill(drill: DrillSummary) -> DrillSummary:
+    return DrillSummary(
+        name=_cap_words(drill.name, 6) or drill.name,
+        why_it_helps=_cap_words(drill.why_it_helps, 18),
+        how_to_do_it=_cap_words(drill.how_to_do_it, 18),
+    )
+
+
+def _shorten_analysis(text: str) -> str:
+    """Keep section titles intact while preventing user-facing essays."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+
+    lines = [line.strip() for line in cleaned.splitlines()]
+    output: list[str] = []
+    current_title = ""
+    current_body: list[str] = []
+    saw_title = False
+
+    known_titles = {
+        "what's working",
+        "setup to finish",
+        "the missing piece",
+        "what changes when you unlock it",
+        "what to keep doing",
+        "your ceiling at this level",
+    }
+
+    def flush() -> None:
+        nonlocal current_body
+        body = " ".join(part for part in current_body if part)
+        if current_title:
+            output.append(current_title)
+            if body:
+                output.append(_cap_section(body, 55))
+        elif body:
+            output.append(_cap_section(body, 55))
+        current_body = []
+
+    for line in lines:
+        if not line:
+            continue
+        if line.lower() in known_titles:
+            flush()
+            current_title = line
+            saw_title = True
+        else:
+            current_body.append(line)
+    flush()
+
+    if not saw_title:
+        return _cap_words(cleaned, 120)
+
+    return "\n\n".join(part for part in output if part).strip()
+
+
+def _extract_section(text: str, title: str) -> str:
+    pattern = re.compile(
+        rf"{re.escape(title)}\s*(.*?)(?=\n\s*(?:What's working|Setup to finish|The missing piece|What changes when you unlock it|What to keep doing|Your ceiling at this level)\s*\n|\Z)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(text or "")
+    if not match:
+        return ""
+    return re.sub(r"\s+", " ", match.group(1)).strip()
+
+
+def _specific_setup_tips(text: str) -> list[str]:
+    lower = text.lower()
+    if not any(token in lower for token in ("setup", "heel", "posture", "hinge", "rounded", "balance")):
+        return []
+    tips = [
+        "Feel pressure under your laces, not your heels.",
+        "Hinge from your hips instead of sitting down.",
+        "Keep your chest taller before the takeaway.",
+    ]
+    return tips
+
+
+def _specific_setup_drill() -> DrillSummary:
+    return DrillSummary(
+        name="Athletic Setup Reps",
+        why_it_helps="Builds the posture and balance before the swing starts.",
+        how_to_do_it="Rehearse 10 setups, then hit 15 half-speed balls with that same stance.",
+    )
+
+
 def _parse_checkpoint(raw: str) -> DiagnosticCheckpointGrade:
     parts = [p.strip() for p in raw.split("|", 2)]
     checkpoint = parts[0] if parts else raw.strip()
@@ -99,11 +220,17 @@ def _coerce_string_list(value: object) -> list[str]:
         if isinstance(item, str):
             result.append(item)
         elif isinstance(item, dict):
-            label = str(item.get("checkpoint") or item.get("label") or "").strip()
-            grade = str(item.get("grade") or item.get("value") or "").strip()
-            obs = str(item.get("observation") or item.get("observed") or "").strip()
-            parts = [p for p in (label, grade, obs) if p]
-            result.append("|".join(parts) if parts else str(item))
+            for key in ("tip", "feel", "text", "content", "cue"):
+                direct = item.get(key)
+                if isinstance(direct, str) and direct.strip():
+                    result.append(direct.strip())
+                    break
+            else:
+                label = str(item.get("checkpoint") or item.get("label") or "").strip()
+                grade = str(item.get("grade") or item.get("value") or "").strip()
+                obs = str(item.get("observation") or item.get("observed") or "").strip()
+                parts = [p for p in (label, grade, obs) if p]
+                result.append("|".join(parts) if parts else str(item))
         else:
             result.append(str(item))
     return result
@@ -143,11 +270,11 @@ def _normalize_gemini_dict(data: dict) -> dict:
         data["mode"] = str(data["mode"] or "development")
 
     if "tips" in data:
-        data["tips"] = _coerce_string_list(data["tips"])
+        data["tips"] = _coerce_string_list(data["tips"])[:4]
     if "checkpoints" in data:
-        data["checkpoints"] = _coerce_string_list(data["checkpoints"])
+        data["checkpoints"] = _coerce_string_list(data["checkpoints"])[:10]
     if "evidence" in data:
-        data["evidence"] = _coerce_string_list(data["evidence"])
+        data["evidence"] = _coerce_string_list(data["evidence"])[:6]
 
     if "confidence" in data:
         try:
@@ -290,8 +417,19 @@ def _build_roadmap(out: GeminiReportOut) -> AccountabilityPlan:
 def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
     mode = out.mode if out.mode in ("development", "maintenance") else "development"
     checkpoints = [_parse_checkpoint(s) for s in out.checkpoints if s.strip()]
+    missing_section = _extract_section(out.analysis, "The missing piece")
+    change_section = _extract_section(out.analysis, "What changes when you unlock it")
+    repaired_main_fix = out.main_fix or missing_section
+    inferred_root = out.root or out.missing or _cap_words(repaired_main_fix, 18)
+    inferred_missing = out.missing or inferred_root
+    inferred_chain = out.chain or change_section or _cap_words(out.analysis, 24)
+    evidence = [_cap_words(item, 18) for item in out.evidence[:6]]
+    if mode == "development" and not evidence:
+        evidence = [inferred_root] if inferred_root else ["Visible swing priority identified from the video."]
 
-    tips = [t.strip() for t in out.tips if t.strip()][:4]
+    tips = [_cap_words(t, 14) for t in out.tips if t.strip()][:3]
+    if not out.tips and repaired_main_fix:
+        tips = _specific_setup_tips(repaired_main_fix)[:3]
     if len(tips) < 2:
         tips.extend(["Feel balanced at address.", "Feel smooth through the ball."][: 2 - len(tips)])
 
@@ -299,7 +437,9 @@ def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
     for raw in (out.drill1, out.drill2, out.drill3):
         parsed = _parse_drill_pipe(raw)
         if parsed:
-            drills.append(parsed)
+            drills.append(_cap_drill(parsed))
+    if not drills and mode == "development" and _specific_setup_tips(repaired_main_fix):
+        drills = [_specific_setup_drill()]
     if not drills and mode == "development":
         drills = [
             DrillSummary(
@@ -309,26 +449,26 @@ def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
             )
         ]
 
-    next_check = out.next_check.strip() or "Film one swing face-on."
+    next_check = _cap_words(out.next_check, 18) or "Film one swing face-on."
 
     return CoachingReportSchema(
-        personalized_greeting=out.greeting or "Let's unlock your next level.",
-        pga_analysis=out.analysis or "Analysis pending.",
-        main_fix=out.main_fix or "Focus on one athletic feel at the range.",
+        personalized_greeting=_cap_words(out.greeting, 25) or "Let's unlock your next level.",
+        pga_analysis=_shorten_analysis(out.analysis) or "Analysis pending.",
+        main_fix=_cap_words(repaired_main_fix, 45) or "Focus on one athletic feel at the range.",
         tips_and_feels=tips,
         drills=drills[:3],
         next_swing_check=next_check,
         advanced_details=AdvancedDetails(
             report_mode=mode,  # type: ignore[arg-type]
-            foundational_missing_piece=out.missing or out.root,
+            foundational_missing_piece=inferred_missing,
             profile_constraints_applied=out.profile,
             diagnostic_checkpoints=checkpoints,
-            root_cause=out.root or out.missing,
+            root_cause=inferred_root,
             symptom=out.symptom,
-            evidence_metrics=out.evidence[:8],
+            evidence_metrics=evidence,
             secondary_fix="",
             optional_fix="",
-            chain_reaction=out.chain,
+            chain_reaction=inferred_chain,
             why_it_caused_the_miss=out.symptom,
             confidence_score=_clamp_confidence(out.confidence),
             next_checkpoint="address",

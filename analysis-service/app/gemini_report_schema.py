@@ -25,10 +25,10 @@ class GeminiReportOut(BaseModel):
     mode: str = "development"
     missing: str = ""
     profile: str = ""
-    checkpoints: list[str] = Field(default_factory=list, max_length=6)
+    checkpoints: list[str] = Field(default_factory=list, max_length=10)
     root: str = ""
     symptom: str = ""
-    evidence: list[str] = Field(default_factory=list, max_length=4)
+    evidence: list[str] = Field(default_factory=list, max_length=6)
     chain: str = ""
     confidence: float = 0.75
     focus: str = ""
@@ -50,14 +50,30 @@ GEMINI_RESPONSE_JSON_SCHEMA: dict = {
         "mode": {"type": "string"},
         "missing": {"type": "string"},
         "profile": {"type": "string"},
-        "checkpoints": {"type": "array", "items": {"type": "string"}, "maxItems": 6},
+        "checkpoints": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
         "root": {"type": "string"},
         "symptom": {"type": "string"},
-        "evidence": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
+        "evidence": {"type": "array", "items": {"type": "string"}, "maxItems": 6},
         "chain": {"type": "string"},
         "confidence": {"type": "number"},
         "focus": {"type": "string"},
         "day7": {"type": "string"},
     },
-    "required": ["greeting", "analysis", "main_fix", "tips"],
+    "required": [
+        "greeting",
+        "analysis",
+        "main_fix",
+        "tips",
+        "next_check",
+        "mode",
+        "missing",
+        "checkpoints",
+        "root",
+        "symptom",
+        "evidence",
+        "chain",
+        "confidence",
+        "focus",
+        "day7",
+    ],
 }

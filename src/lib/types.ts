@@ -12,6 +12,9 @@ export interface Profile {
   age?: number | null;
   years_playing?: number | null;
   physical_limitations?: string | null;
+  average_9_score?: number | null;
+  typical_miss?: string | null;
+  primary_goal?: string | null;
 }
 
 export interface Subscription {
