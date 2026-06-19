@@ -18,6 +18,10 @@ const schedulerMigrationPath = new URL(
   "../supabase/migrations/011_analysis_scheduler.sql",
   import.meta.url
 );
+const privilegeMigrationPath = new URL(
+  "../supabase/migrations/20260619143920_private_function_privileges.sql",
+  import.meta.url
+);
 
 test("launch migration locks sensitive tables and adds atomic RPCs", async () => {
   const sql = await readFile(migrationPath, "utf8");
@@ -113,4 +117,11 @@ test("production rate limiting fails closed when Upstash is unavailable", async 
 
   assert.match(limiter, /process\.env\.NODE_ENV === "production"/);
   assert.match(limiter, /Rate limiting is temporarily unavailable/);
+});
+
+test("all private functions revoke inherited public execution", async () => {
+  const sql = await readFile(privilegeMigrationPath, "utf8");
+
+  assert.match(sql, /REVOKE ALL ON ALL FUNCTIONS IN SCHEMA private FROM PUBLIC/i);
+  assert.match(sql, /ALTER DEFAULT PRIVILEGES IN SCHEMA private/i);
 });
