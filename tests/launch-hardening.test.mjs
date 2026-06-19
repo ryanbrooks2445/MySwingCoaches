@@ -140,3 +140,15 @@ test("failed direct uploads cancel the session and restore the reserved credit",
   assert.match(uploadPage, /Unexpected end of JSON input/);
   assert.match(uploadPage, /Your credit was restored/);
 });
+
+test("direct signed uploads do not rely on Supabase storage JSON parsing", async () => {
+  const uploadPage = await readFile(new URL("../src/app/upload/page.tsx", import.meta.url), "utf8");
+  const apiReader = await readFile(new URL("../src/lib/api-response.ts", import.meta.url), "utf8");
+
+  assert.match(uploadPage, /function uploadToSignedStorageUrl/);
+  assert.match(uploadPage, /\/storage\/v1\/object\/upload\/sign\/swing-videos\//);
+  assert.match(uploadPage, /if \(response\.ok\) return/);
+  assert.doesNotMatch(uploadPage, /uploadToSignedUrl/);
+  assert.match(apiReader, /await response\.text\(\)/);
+  assert.match(apiReader, /if \(!text\)/);
+});

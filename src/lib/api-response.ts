@@ -4,7 +4,11 @@ export async function readApiResponse<T extends Record<string, unknown>>(
   const contentType = response.headers.get("content-type") || "";
 
   if (contentType.includes("application/json")) {
-    return (await response.json()) as T & { error?: string };
+    const text = (await response.text()).trim();
+    if (!text) {
+      return {} as T & { error?: string };
+    }
+    return JSON.parse(text) as T & { error?: string };
   }
 
   const text = (await response.text()).trim();

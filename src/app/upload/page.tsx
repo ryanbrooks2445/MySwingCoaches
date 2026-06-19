@@ -64,6 +64,44 @@ async function cancelUploadSession(sessionId: string): Promise<void> {
   }
 }
 
+async function uploadToSignedStorageUrl(args: {
+  path: string;
+  token: string;
+  file: File;
+  accessToken?: string;
+}): Promise<void> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) {
+    throw new Error("Secure upload is not configured.");
+  }
+
+  const cleanPath = args.path.replace(/^\/|\/$/g, "").replace(/\/+/g, "/");
+  const uploadUrl = new URL(
+    `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/upload/sign/swing-videos/${cleanPath}`
+  );
+  uploadUrl.searchParams.set("token", args.token);
+
+  const body = new FormData();
+  body.append("cacheControl", "3600");
+  body.append("", args.file);
+
+  const response = await fetch(uploadUrl.toString(), {
+    method: "PUT",
+    headers: {
+      apikey: anonKey,
+      "x-upsert": "false",
+      ...(args.accessToken ? { Authorization: `Bearer ${args.accessToken}` } : {}),
+    },
+    body,
+  });
+
+  if (response.ok) return;
+
+  const parsed = await readApiResponse<{ message?: string }>(response);
+  throw new Error(parsed.error || parsed.message || "The video upload was interrupted.");
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -121,6 +159,9 @@ export default function UploadPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in. Please log in and try again.");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       setStatus("Checking video...");
       const duration = await videoDuration(file);
@@ -156,15 +197,12 @@ export default function UploadPage() {
 
       setStatus("Uploading directly to private storage...");
       setProgress(35);
-      const { error: storageError } = await supabase.storage
-        .from("swing-videos")
-        .uploadToSignedUrl(intent.path, intent.token, file, {
-          contentType: file.type,
-          upsert: false,
-        });
-      if (storageError) {
-        throw new Error("The video upload was interrupted. Your credit will be restored.");
-      }
+      await uploadToSignedStorageUrl({
+        path: intent.path,
+        token: intent.token,
+        file,
+        accessToken: session?.access_token,
+      });
 
       setProgress(80);
       setStatus("Securing your upload and joining the analysis queue...");
