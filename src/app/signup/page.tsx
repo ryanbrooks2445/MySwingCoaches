@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { PRICE_FIRST_ANALYSIS_DISPLAY, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
 
 function SignupForm() {
@@ -28,7 +29,7 @@ function SignupForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, displayName, redirectTo }),
     });
-    const data = await response.json();
+    const data = await readApiResponse<{ requiresConfirmation?: boolean }>(response);
     setLoading(false);
     if (!response.ok) {
       setError(data.error || "We could not create that account.");

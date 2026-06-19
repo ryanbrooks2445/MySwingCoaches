@@ -1,0 +1,15 @@
+.git
+.next
+node_modules
+apps
+public
+src
+tests
+packages
+docs
+.cursor
+.vercel
+.pytest_cache
+*.log
+package-lock.json
+tsconfig.tsbuildinfo

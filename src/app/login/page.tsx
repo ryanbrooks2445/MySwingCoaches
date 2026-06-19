@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 
 function LoginForm() {
   const router = useRouter();
@@ -25,7 +26,7 @@ function LoginForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    const data = await response.json();
+    const data = await readApiResponse(response);
     setLoading(false);
     if (!response.ok) {
       setError(data.error || "We could not log you in.");

@@ -7,6 +7,7 @@ import { DeleteSwingButton } from "@/components/DeleteSwingButton";
 import { SimplifiedSwingReport } from "@/components/SimplifiedSwingReport";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { getSimplifiedReport, parseCoachingContent } from "@/lib/coaching";
 import { SWING_MODE_LABELS } from "@/lib/pricing";
 import { logTrace } from "@/lib/trace";
@@ -22,9 +23,13 @@ export default function SwingReportPage() {
 
   const fetchStatus = useCallback(async () => {
     const res = await fetch(`/api/swings/${reportId}/status`);
-    const data = await res.json();
+    const data = await readApiResponse<{ report?: SwingReport }>(res);
     if (!res.ok) {
-      setError(data.error);
+      setError(data.error || "Could not load this report.");
+      return;
+    }
+    if (!data.report) {
+      setError("Could not load this report.");
       return;
     }
     setReport(data.report);
@@ -99,7 +104,7 @@ export default function SwingReportPage() {
                 onClick={async () => {
                   setRetrying(true);
                   const res = await fetch(`/api/swings/${reportId}/analyze`, { method: "POST" });
-                  const data = await res.json();
+                  const data = await readApiResponse(res);
                   if (!res.ok) setError(data.error || "Could not retry this analysis.");
                   else await fetchStatus();
                   setRetrying(false);

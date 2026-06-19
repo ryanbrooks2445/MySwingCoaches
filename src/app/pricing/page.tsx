@@ -7,6 +7,7 @@ import { AppNav } from "@/components/AppNav";
 import { PublicHeader } from "@/components/PublicHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/client";
 import {
   PRICE_FIRST_ANALYSIS_DISPLAY,
@@ -97,7 +98,7 @@ function PricingContent() {
     setMessage(null);
     try {
       const checkoutRes = await fetch("/api/stripe/checkout", { method: "POST" });
-      const checkoutData = await checkoutRes.json();
+      const checkoutData = await readApiResponse<{ url?: string }>(checkoutRes);
 
       if (checkoutRes.status === 401) {
         router.push("/login?redirect=/pricing");

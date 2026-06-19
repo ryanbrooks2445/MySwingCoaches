@@ -8,6 +8,7 @@ import { GolferProfileForm } from "@/components/GolferProfileForm";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/client";
 import {
   PRICE_FIRST_ANALYSIS_DISPLAY,
@@ -114,7 +115,12 @@ export default function UploadPage() {
           swingMode,
         }),
       });
-      const intent = await intentRes.json();
+      const intent = await readApiResponse<{
+        sessionId: string;
+        reportId: string;
+        path: string;
+        token: string;
+      }>(intentRes);
       if (!intentRes.ok) {
         throw new Error(intent.error || "Could not prepare upload.");
       }
@@ -138,7 +144,7 @@ export default function UploadPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: intent.sessionId }),
       });
-      const registered = await registerRes.json();
+      const registered = await readApiResponse<{ reportId: string }>(registerRes);
       if (!registerRes.ok) {
         throw new Error(registered.error || "Could not queue analysis.");
       }
