@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { isGolferProfileComplete, type GolferProfileFields } from "@/lib/player-profile";
 import { cn } from "@/lib/utils";
 
@@ -29,9 +30,13 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
     async function load() {
       try {
         const res = await fetch("/api/profile");
-        const data = await res.json();
+        const data = await readApiResponse<{
+          profile?: GolferProfileFields;
+          complete?: boolean;
+        }>(res);
         if (!res.ok) throw new Error(data.error || "Failed to load profile");
-        const p = data.profile as GolferProfileFields;
+        const p = data.profile;
+        if (!p) throw new Error("Could not load profile");
         if (p.age != null) setAge(String(p.age));
         if (p.years_playing != null) setYearsPlaying(String(p.years_playing));
         if (p.average_9_score != null) setAverage9Score(String(p.average_9_score));
@@ -77,7 +82,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
           primary_goal: primaryGoal,
         }),
       });
-      const data = await res.json();
+      const data = await readApiResponse<{ complete?: boolean }>(res);
       if (!res.ok) throw new Error(data.error || "Failed to save profile");
 
       const isComplete = Boolean(data.complete);

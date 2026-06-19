@@ -152,3 +152,18 @@ test("direct signed uploads do not rely on Supabase storage JSON parsing", async
   assert.match(apiReader, /await response\.text\(\)/);
   assert.match(apiReader, /if \(!text\)/);
 });
+
+test("customer-facing forms use safe response parsing", async () => {
+  const files = [
+    "../src/components/GolferProfileForm.tsx",
+    "../src/components/SupportForm.tsx",
+    "../src/components/DeleteSwingButton.tsx",
+    "../src/app/account/page.tsx",
+  ];
+
+  for (const file of files) {
+    const source = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.match(source, /readApiResponse/);
+    assert.doesNotMatch(source, /\.json\(\)/);
+  }
+});

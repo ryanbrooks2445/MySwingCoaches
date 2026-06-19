@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/client";
 
 export default function AccountPage() {
@@ -44,7 +45,7 @@ export default function AccountPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ confirmation }),
               });
-              const data = await response.json();
+              const data = await readApiResponse(response);
               if (!response.ok) {
                 setError(data.error || "Deletion failed.");
                 setDeleting(false);

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { readApiResponse } from "@/lib/api-response";
 import { cn } from "@/lib/utils";
 
 type DeleteSwingButtonProps = {
@@ -34,10 +35,10 @@ export function DeleteSwingButton({
     if (!confirm(confirmMessage)) return;
 
     setLoading(true);
-    setError(null);
+      setError(null);
     try {
       const res = await fetch(`/api/swings/${reportId}`, { method: "DELETE" });
-      const data = await res.json();
+      const data = await readApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Delete failed");
       onDeleted?.();
       if (redirectTo) router.push(redirectTo);
@@ -84,7 +85,7 @@ export function ClearSwingHistoryButton({ className }: { className?: string }) {
     setError(null);
     try {
       const res = await fetch("/api/swings?all=true", { method: "DELETE" });
-      const data = await res.json();
+      const data = await readApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Clear failed");
       router.refresh();
     } catch (err) {

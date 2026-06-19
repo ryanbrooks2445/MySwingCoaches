@@ -6,6 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { ReportMarkdown } from "@/components/ReportMarkdown";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { readApiResponse } from "@/lib/api-response";
 import { getFeelBlueprint, parseCoachingContent } from "@/lib/coaching";
 import type { SwingReport } from "@/lib/types";
 
@@ -20,9 +21,9 @@ export default function CoachReviewDetailPage() {
 
   const fetchReport = useCallback(async () => {
     const res = await fetch(`/api/swings/${reportId}/status`);
-    const data = await res.json();
+    const data = await readApiResponse<{ report?: SwingReport }>(res);
     if (res.ok) {
-      setReport(data.report);
+      setReport(data.report ?? null);
     }
   }, [reportId]);
 
@@ -38,10 +39,10 @@ export default function CoachReviewDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notes, complete }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     setSaving(false);
     if (!res.ok) {
-      setMessage(data.error);
+      setMessage(data.error || "Could not save review.");
       return;
     }
     setMessage(complete ? "Review marked complete." : "Notes saved.");

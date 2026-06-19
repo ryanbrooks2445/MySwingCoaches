@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { readApiResponse } from "@/lib/api-response";
 
 export function SupportForm() {
   const [email, setEmail] = useState("");
@@ -22,7 +23,7 @@ export function SupportForm() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, subject, message }),
         });
-        const data = await response.json();
+        const data = await readApiResponse(response);
         setSending(false);
         if (!response.ok) {
           setStatus(data.error || "Could not submit your request.");
