@@ -7,7 +7,6 @@ const REQUIRED_SERVER_ENV = [
   "STRIPE_WEBHOOK_SECRET",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
-  "SENTRY_DSN",
 ] as const;
 
 export function assertServerEnvironment(): void {

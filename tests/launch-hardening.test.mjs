@@ -167,3 +167,11 @@ test("customer-facing forms use safe response parsing", async () => {
     assert.doesNotMatch(source, /\.json\(\)/);
   }
 });
+
+test("missing monitoring DSN does not block core production routes", async () => {
+  const env = await readFile(new URL("../src/lib/env.ts", import.meta.url), "utf8");
+  const monitoring = await readFile(new URL("../src/lib/monitoring.ts", import.meta.url), "utf8");
+
+  assert.doesNotMatch(env, /"SENTRY_DSN"/);
+  assert.match(monitoring, /if \(!dsn\) return/);
+});
