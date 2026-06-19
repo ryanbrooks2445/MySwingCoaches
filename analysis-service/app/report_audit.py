@@ -25,6 +25,17 @@ _OVERPRAISE_TERMS = (
     "elite consistency",
     "perfect",
     "textbook",
+    "exceptionally high",
+    "wins matches",
+    "drops handicaps",
+)
+
+_UNSUPPORTED_OUTCOME_TERMS = (
+    "scratch golfer",
+    "handicap",
+    "wins matches",
+    "drops handicaps",
+    "posting great scores",
 )
 
 
@@ -65,6 +76,9 @@ def audit_report_quality(
 
     if any(term in report.main_fix.lower() for term in _GENERIC_MAIN_FIXES):
         raise ReportQualityError("Generated report used a generic main fix.")
+
+    if any(term in text for term in _UNSUPPORTED_OUTCOME_TERMS):
+        raise ReportQualityError("Generated report made an unsupported scoring or handicap prediction.")
 
     if _high_score_context(player_context) and any(term in text for term in _OVERPRAISE_TERMS):
         raise ReportQualityError("Generated report overpraised a high-score golfer.")

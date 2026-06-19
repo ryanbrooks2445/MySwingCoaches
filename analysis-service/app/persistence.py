@@ -72,7 +72,11 @@ def persist_analysis_result(
 ) -> None:
     client = get_supabase_client()
 
-    key_frame_urls = [{"phase": f.phase, "url": f.url} for f in key_frames]
+    key_frame_urls = [
+        {"phase": f.phase, "storage_path": f.storage_path}
+        for f in key_frames
+        if f.storage_path
+    ]
     coaching_content = report.model_dump()
 
     gemini_raw = {
@@ -105,11 +109,6 @@ def persist_analysis_result(
 
     client.table("swing_issues").delete().eq("report_id", analysis_id).execute()
     client.table("drill_recommendations").delete().eq("report_id", analysis_id).execute()
-
-    sub = client.table("subscriptions").select("analyses_used").eq("user_id", user_id).single().execute()
-    if sub.data:
-        used = sub.data.get("analyses_used", 0) + 1
-        client.table("subscriptions").update({"analyses_used": used}).eq("user_id", user_id).execute()
 
     log_trace(
         "report_saved",

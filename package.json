@@ -2,6 +2,7 @@
   "name": "myswingcoaches-web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=20"
   },
@@ -9,7 +10,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs tests/*.test.ts",
+    "test:python": "PYTHONPATH=analysis-service python3 -m pytest analysis-service/tests -q",
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:python && npm run build"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

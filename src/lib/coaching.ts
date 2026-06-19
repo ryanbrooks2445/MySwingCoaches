@@ -1,5 +1,4 @@
 import type {
-  AnalysisBullet,
   CoachingContent,
   FeelBlueprintDiagnostic,
   SimplifiedSwingReport,
@@ -142,6 +141,9 @@ export function getSimplifiedReport(content: CoachingContent): SimplifiedSwingRe
       main_fix: content.main_fix!,
       tips_and_feels: content.tips_and_feels ?? [],
       drills: content.drills ?? [],
+      practice_plan: content.roadmap?.milestones?.map(
+        (milestone) => `${milestone.days}: ${milestone.detail}`
+      ),
       next_swing_check: content.next_swing_check ?? content.next_upload_focus,
       advanced_details: content.advanced_details ?? {
         report_mode: "development",

@@ -2,8 +2,6 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // TODO: Upstash/redis rate limiting per userId on /api/swings/*
-
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -30,7 +28,7 @@ export async function middleware(request: NextRequest) {
 
   const isAuthRoute = path.startsWith("/login") || path.startsWith("/signup");
   const isProtected = path.startsWith("/dashboard") || path.startsWith("/upload") ||
-    path.startsWith("/swings") || path.startsWith("/progress") || path.startsWith("/pricing");
+    path.startsWith("/swings") || path.startsWith("/progress") || path.startsWith("/account");
   const isAdmin = path.startsWith("/coach");
 
   if (!user && (isProtected || isAdmin)) {
@@ -65,7 +63,7 @@ export const config = {
     "/upload/:path*",
     "/swings/:path*",
     "/progress/:path*",
-    "/pricing/:path*",
+    "/account/:path*",
     "/coach/:path*",
     "/login",
     "/signup",

@@ -14,7 +14,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-medium transition-colors disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 disabled:opacity-50",
         variant === "primary" && "bg-[var(--color-accent)] text-white hover:opacity-90",
         variant === "secondary" && "border border-[var(--color-border)] bg-[var(--color-card)] hover:bg-[var(--color-border)]/30",
         variant === "ghost" && "hover:bg-[var(--color-border)]/30",

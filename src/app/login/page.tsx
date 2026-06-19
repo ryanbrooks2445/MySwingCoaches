@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -18,18 +20,18 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
     setLoading(false);
-    if (authError) {
-      setError(
-        authError.message === "Email not confirmed"
-          ? "Email not confirmed. Check your inbox for the confirmation link, or ask your admin to confirm your account in Supabase."
-          : authError.message
-      );
+    if (!response.ok) {
+      setError(data.error || "We could not log you in.");
       return;
     }
-    router.push("/dashboard");
+    router.push(redirectTo.startsWith("/") ? redirectTo : "/dashboard");
     router.refresh();
   }
 
@@ -39,22 +41,28 @@ export default function LoginPage() {
         <h1 className="text-2xl font-semibold">Log in</h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">Welcome back to MySwingCoaches</p>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <label className="block text-sm">
+            <span className="font-medium">Email</span>
           <input
             type="email"
-            placeholder="Email"
+            autoComplete="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 text-sm"
           />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium">Password</span>
           <input
             type="password"
-            placeholder="Password"
+            autoComplete="current-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 text-sm"
           />
+          </label>
           {error && <p className="text-sm text-red-500">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
@@ -62,11 +70,27 @@ export default function LoginPage() {
         </form>
         <p className="mt-4 text-center text-sm text-[var(--color-muted)]">
           No account?{" "}
-          <Link href="/signup" className="text-[var(--color-accent)] hover:underline">
+          <Link
+            href={`/signup?redirect=${encodeURIComponent(redirectTo)}`}
+            className="text-[var(--color-accent)] hover:underline"
+          >
             Create a new account
+          </Link>
+        </p>
+        <p className="mt-3 text-center text-sm">
+          <Link href="/reset-password" className="text-[var(--color-muted)] hover:underline">
+            Forgot password?
           </Link>
         </p>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

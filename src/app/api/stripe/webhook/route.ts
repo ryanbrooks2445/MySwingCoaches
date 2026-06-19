@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import type Stripe from "stripe";
-import { addAnalysisCredit } from "@/lib/add-analysis-credit";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 
@@ -13,29 +12,38 @@ async function fulfillCheckoutSession(session: Stripe.Checkout.Session): Promise
     throw new Error("checkout.session.completed missing metadata.user_id");
   }
 
-  const serviceClient = createServiceClient();
-  const { data: existing } = await serviceClient
-    .from("stripe_checkout_sessions")
-    .select("id")
-    .eq("id", session.id)
-    .maybeSingle();
-
-  if (existing) {
-    return;
+  const amount = session.amount_total ?? 0;
+  const expectedAmount = Number(session.metadata?.expected_amount_cents);
+  if (
+    session.mode !== "payment" ||
+    session.payment_status !== "paid" ||
+    session.currency !== "usd" ||
+    ![999, 1999].includes(amount) ||
+    amount !== expectedAmount
+  ) {
+    throw new Error("Checkout session payment details did not match the expected analysis price");
   }
 
-  const result = await addAnalysisCredit(userId);
+  const serviceClient = createServiceClient();
+  const { data: subscription } = await serviceClient
+    .from("subscriptions")
+    .select("stripe_customer_id")
+    .eq("user_id", userId)
+    .single();
+  if (
+    !subscription?.stripe_customer_id ||
+    String(session.customer) !== subscription.stripe_customer_id
+  ) {
+    throw new Error("Checkout session customer did not match the signed-in account");
+  }
 
-  const { error: insertError } = await serviceClient.from("stripe_checkout_sessions").insert({
-    id: session.id,
-    user_id: userId,
-    amount_cents: session.amount_total ?? 0,
-    credits_added: 1,
-    analyses_limit_after: result.analyses_limit,
+  const { error } = await serviceClient.rpc("service_fulfill_checkout_session", {
+    p_session_id: session.id,
+    p_user_id: userId,
+    p_amount_cents: amount,
   });
-
-  if (insertError) {
-    throw new Error(insertError.message);
+  if (error) {
+    throw new Error(error.message);
   }
 }
 

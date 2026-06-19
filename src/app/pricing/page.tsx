@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
+import { PublicHeader } from "@/components/PublicHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
@@ -24,18 +25,21 @@ function PricingContent() {
   const [nextPrice, setNextPrice] = useState(PRICE_FIRST_ANALYSIS_DISPLAY);
   const [introEligible, setIntroEligible] = useState(false);
   const [creditsReady, setCreditsReady] = useState<number | null>(null);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
-  const refreshPricing = useCallback(async () => {
+  const refreshPricing = useCallback(async (): Promise<number | null> => {
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
+      setSignedIn(false);
       setNextPrice(PRICE_FIRST_ANALYSIS_DISPLAY);
       setIntroEligible(true);
       setCreditsReady(null);
-      return;
+      return null;
     }
+    setSignedIn(true);
     const { data: sub } = await supabase
       .from("subscriptions")
       .select("analyses_limit, analyses_used")
@@ -45,13 +49,15 @@ function PricingContent() {
       setNextPrice(PRICE_FIRST_ANALYSIS_DISPLAY);
       setIntroEligible(true);
       setCreditsReady(null);
-      return;
+      return null;
     }
     const used = sub.analyses_used ?? 0;
     const limit = sub.analyses_limit ?? 0;
     setNextPrice(getNextAnalysisPriceDisplay(used, limit));
     setIntroEligible(qualifiesForIntroPrice(used, limit));
-    setCreditsReady(Math.max(0, limit - used));
+    const available = Math.max(0, limit - used);
+    setCreditsReady(available);
+    return available;
   }, []);
 
   useEffect(() => {
@@ -61,9 +67,25 @@ function PricingContent() {
   useEffect(() => {
     const checkout = searchParams.get("checkout");
     if (checkout === "success") {
-      setMessage("Payment successful. Your analysis credit is ready — head to upload.");
-      refreshPricing();
+      setMessage("Payment received. Confirming your analysis credit...");
+      let attempts = 0;
+      const poll = window.setInterval(async () => {
+        attempts += 1;
+        const available = await refreshPricing();
+        if (available !== null && available > 0) {
+          window.clearInterval(poll);
+          setMessage("Payment confirmed. Your analysis credit is ready.");
+          return;
+        }
+        if (attempts >= 10) {
+          window.clearInterval(poll);
+          setMessage(
+            "Payment received. Credit confirmation is taking longer than expected; refresh shortly or contact support."
+          );
+        }
+      }, 1500);
       router.replace("/pricing");
+      return () => window.clearInterval(poll);
     } else if (checkout === "cancelled") {
       setMessage("Checkout cancelled. No charge was made.");
       router.replace("/pricing");
@@ -87,19 +109,6 @@ function PricingContent() {
         return;
       }
 
-      if (checkoutRes.status === 503) {
-        const stubRes = await fetch("/api/subscriptions/purchase-analysis", { method: "POST" });
-        const stubData = await stubRes.json();
-        if (!stubRes.ok) throw new Error(stubData.error);
-        setMessage(
-          `${stubData.message} You have ${stubData.analyses_remaining} upload${stubData.analyses_remaining === 1 ? "" : "s"} ready.`
-        );
-        setNextPrice(PRICE_PER_ANALYSIS_DISPLAY);
-        setIntroEligible(false);
-        setCreditsReady(stubData.analyses_remaining);
-        return;
-      }
-
       throw new Error(checkoutData.error ?? "Checkout failed");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Purchase failed");
@@ -110,7 +119,7 @@ function PricingContent() {
 
   return (
     <div className="min-h-screen">
-      <AppNav />
+      {signedIn ? <AppNav /> : <PublicHeader />}
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="text-center">
           <h1 className="text-3xl font-semibold">Pricing</h1>
@@ -119,6 +128,9 @@ function PricingContent() {
           </p>
           <p className="mt-2 text-xs text-[var(--color-muted)]">
             Secure checkout powered by Stripe
+          </p>
+          <p className="mt-3 text-sm text-[var(--color-muted)]">
+            If analysis cannot be completed after automatic retries, your credit is restored.
           </p>
         </div>
 
@@ -155,8 +167,9 @@ function PricingContent() {
           <ul className="mx-auto mt-8 max-w-sm space-y-2 text-left text-sm text-[var(--color-muted)]">
             <li>• Full swing, chipping, or putting — same price</li>
             <li>• Short diagnostic + feels + 7-day plan</li>
-            <li>• YouTube drills matched to your missing piece</li>
+            <li>• One drill matched to the visible priority</li>
             <li>• Personalized to your history in that mode</li>
+            <li>• Private source video removed after 30 days</li>
           </ul>
           <Button
             className="mt-8 w-full"
@@ -168,6 +181,12 @@ function PricingContent() {
           <Link href="/upload" className="mt-4 block text-sm text-[var(--color-accent)] hover:underline">
             Go to upload →
           </Link>
+          <p className="mt-5 text-xs leading-relaxed text-[var(--color-muted)]">
+            AI-generated coaching guidance is not a guaranteed performance result or a replacement
+            for instruction from a certified golf professional. By purchasing, you agree to the{" "}
+            <Link href="/terms" className="underline">Terms</Link> and{" "}
+            <Link href="/refund-policy" className="underline">Refund Policy</Link>.
+          </p>
         </Card>
 
         {!introEligible && (

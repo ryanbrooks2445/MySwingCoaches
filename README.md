@@ -2,7 +2,7 @@
 
 AI golf swing analysis platform. Upload a swing video and get a Gemini-powered coaching report from full video analysis.
 
-**Architecture:** Video upload → OpenCV frame extraction → **Gemini multimodal video coaching** → dashboard.
+**Architecture:** signed browser upload → durable Supabase job → Cloud Run worker → normalized video + Gemini multimodal coaching → saved report.
 
 ## Prerequisites
 
@@ -39,14 +39,16 @@ Fill in:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project → Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project → Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase project → Settings → API (server only) |
-| `GEMINI_API_KEY` | Google AI Studio |
-| `ANALYSIS_SERVICE_URL` | `http://localhost:8001` locally; deployed FastAPI URL in production |
-| `ANALYSIS_SERVICE_SECRET` | Shared secret between Next.js and FastAPI |
-| `SUPABASE_URL` | Same as `NEXT_PUBLIC_SUPABASE_URL` (analysis-service `.env`) |
+| `GEMINI_API_KEY` | Google AI Studio; analysis service only |
+| `ANALYSIS_SERVICE_SECRET` | Shared secret stored in Cloud Run and Supabase Vault |
+| `SUPABASE_URL` | Same project URL; analysis service only |
 | `STRIPE_SECRET_KEY` | Stripe secret key for Checkout |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for `/api/stripe/webhook` |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Optional for future Stripe Elements; Checkout redirect does not require it |
-| `ENABLE_DEV_CREDIT_STUB` | Local-only fallback for testing credits without Stripe; keep `false` in production |
+| `UPSTASH_REDIS_REST_URL` | Upstash REST endpoint for production rate limits |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST token; server only |
+| `SENTRY_DSN` | Server error monitoring DSN |
+| `ALLOWED_CORS_ORIGINS` | Exact production web origins accepted by Cloud Run |
 
 ### 2. Supabase database
 
@@ -115,10 +117,11 @@ python scripts/run_local_analysis.py /path/to/swing.mp4
 
 1. Sign up / log in (Supabase Auth)
 2. Upload MP4 or MOV on `/upload`
-3. Video stored in Supabase Storage; `swing_reports` created with status `processing`
-4. Next.js calls FastAPI `/analyze` with signed video URL
-5. FastAPI: OpenCV frames → Gemini video coaching JSON
-6. Results persisted to Supabase; user views report at `/swings/[id]`
+3. Browser uploads directly to private Supabase Storage
+4. Registration atomically creates the video, report, and analysis job
+5. Supabase Cron dispatches queued work to Cloud Run
+6. Cloud Run normalizes the phone video, extracts frames, and requests structured Gemini coaching
+7. Results persist in Supabase; retries and terminal credit restoration happen without the browser remaining open
 
 ## Coach admin
 
@@ -138,7 +141,7 @@ Plans are stored in `subscriptions`. `/pricing` creates a Stripe Checkout sessio
 https://YOUR_WEB_APP_DOMAIN/api/stripe/webhook
 ```
 
-The webhook verifies `STRIPE_WEBHOOK_SECRET`, records the Stripe session idempotently in `stripe_checkout_sessions`, and adds one prepaid analysis credit. For local-only testing without Stripe, set `ENABLE_DEV_CREDIT_STUB=true`; production blocks the stub routes.
+The webhook verifies `STRIPE_WEBHOOK_SECRET`, validates the paid amount and customer, then fulfills the session and credit in one idempotent database transaction.
 
 ## Disclaimer
 
@@ -146,11 +149,30 @@ All reports include:
 
 > AI-generated swing analysis inspired by common coaching principles. This does not replace in-person instruction from a certified golf professional.
 
-## Known MVP limitations
+## Production deployment
 
-- Key frames are evenly sampled from the video (not ML phase detection)
-- Analysis runs synchronously — long videos may timeout (max 100MB recommended, ~30s)
-- Coaching is entirely from Gemini watching your video — not a launch monitor or certified PGA analysis
+1. Run `npm run check`.
+2. Run `npx supabase migration list --linked` and confirm local and remote histories match.
+3. Deploy `analysis-service/Dockerfile` to Cloud Run with minimum instances `0`, maximum instances `2`, a 15-minute request timeout, and the analysis-service variables from `.env.example`.
+4. Add `analysis_service_url` and `analysis_service_secret` to Supabase Vault. The secret must match Cloud Run.
+5. Confirm the `analysis-worker-every-minute` job exists in `cron.job`.
+6. Add the web variables from `.env.example` to Vercel Production and Preview.
+7. Point Stripe’s `checkout.session.completed` webhook to `https://YOUR_DOMAIN/api/stripe/webhook`.
+8. Run a Stripe test purchase, direct phone upload, completed report, duplicate webhook, and forced-failure credit restoration before enabling live mode.
+
+Example Vault setup, run in the Supabase SQL editor:
+
+```sql
+select vault.create_secret('https://YOUR_CLOUD_RUN_URL', 'analysis_service_url');
+select vault.create_secret('YOUR_SHARED_SECRET', 'analysis_service_secret');
+```
+
+## MVP boundaries
+
+- This is video-based guidance, not launch-monitor measurement.
+- Key frames are sampled checkpoints rather than motion-capture data.
+- AI guidance is not a certified PGA lesson or a guaranteed performance result.
+- Source videos are private and retained for 30 days; reports remain until account deletion.
 
 ## License
 

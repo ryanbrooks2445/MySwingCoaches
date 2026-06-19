@@ -192,6 +192,7 @@ export interface SimplifiedSwingReport {
   main_fix: string;
   tips_and_feels: string[];
   drills: DrillSummary[];
+  practice_plan?: string[];
   next_swing_check: string;
   advanced_details: AdvancedDetails;
 }
@@ -247,7 +248,8 @@ export interface SwingReport {
 
 export interface KeyFrameUrl {
   phase: string;
-  url: string;
+  url?: string;
+  storage_path?: string;
   confidence?: number;
 }
 

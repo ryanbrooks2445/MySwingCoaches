@@ -20,6 +20,23 @@ import {
 } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 
+async function videoDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(video.duration);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("This file could not be read as a video."));
+    };
+    video.src = url;
+  });
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -76,58 +93,66 @@ export default function UploadPage() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in. Please log in and try again.");
 
-      setStatus("Uploading video to storage...");
-      setProgress(20);
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("swingMode", swingMode);
-
-      const uploadRes = await fetch("/api/swings/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) {
-        throw new Error(uploadData.error || "Failed to upload swing");
+      setStatus("Checking video...");
+      const duration = await videoDuration(file);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        throw new Error("This file could not be read as a video.");
+      }
+      if (duration > 30.5) {
+        throw new Error("Video must be 30 seconds or shorter.");
       }
 
-      setProgress(70);
-      setStatus(`Analyzing your ${SWING_MODE_LABELS[swingMode].toLowerCase()} (1–3 min)...`);
-
-      const analyzeRes = await fetch(`/api/swings/${uploadData.reportId}/analyze`, {
+      setStatus("Preparing secure upload...");
+      setProgress(15);
+      const intentRes = await fetch("/api/swings/upload-intent", {
         method: "POST",
-        headers: uploadData.traceId
-          ? { "X-Trace-Id": uploadData.traceId }
-          : undefined,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originalFilename: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          swingMode,
+        }),
       });
-
-      let analyzeData: { error?: string } = {};
-      try {
-        analyzeData = await analyzeRes.json();
-      } catch {
-        throw new Error(
-          "Analysis service unreachable. Start it with: cd analysis-service && uvicorn app.main:app --reload --port 8001"
-        );
+      const intent = await intentRes.json();
+      if (!intentRes.ok) {
+        throw new Error(intent.error || "Could not prepare upload.");
       }
 
-      if (!analyzeRes.ok) {
-        throw new Error(analyzeData.error || "Analysis failed");
+      setStatus("Uploading directly to private storage...");
+      setProgress(35);
+      const { error: storageError } = await supabase.storage
+        .from("swing-videos")
+        .uploadToSignedUrl(intent.path, intent.token, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+      if (storageError) {
+        throw new Error("The video upload was interrupted. Your credit will be restored.");
+      }
+
+      setProgress(80);
+      setStatus("Securing your upload and joining the analysis queue...");
+      const registerRes = await fetch("/api/swings/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: intent.sessionId }),
+      });
+      const registered = await registerRes.json();
+      if (!registerRes.ok) {
+        throw new Error(registered.error || "Could not queue analysis.");
       }
 
       setProgress(100);
-      setStatus("Complete!");
-      router.push(`/swings/${uploadData.reportId}`);
+      setStatus("Upload complete. You can leave this page while we analyze it.");
+      router.push(`/swings/${registered.reportId}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
-      if (message === "Failed to fetch") {
-        setError(
-          "Network error — is the dev server running? Run: npm run dev"
-        );
-      } else {
-        setError(message);
-      }
+      setError(
+        message === "Failed to fetch"
+          ? "Your connection was interrupted. Please check your internet connection and try again."
+          : message
+      );
       setStatus(null);
     } finally {
       setUploading(false);
@@ -145,11 +170,15 @@ export default function UploadPage() {
             <span> · then {PRICE_PER_ANALYSIS_DISPLAY} each</span>
           )}
         </p>
+        <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-muted)]">
+          Videos are private and automatically removed after 30 days. Most reports are ready in
+          2–5 minutes; free-tier cold starts can take longer.
+        </p>
 
         {credits !== null && (
           <p className="mt-2 text-sm">
             {credits === "unlimited" ? (
-              <span className="text-[var(--color-accent)]">Unlimited analyses (dev)</span>
+              <span className="text-[var(--color-accent)]">Unlimited analyses</span>
             ) : credits > 0 ? (
               <span>
                 <span className="font-medium text-[var(--color-foreground)]">{credits}</span>{" "}
@@ -237,9 +266,9 @@ export default function UploadPage() {
             size="lg"
           >
             {uploading
-              ? "Processing..."
+              ? "Uploading..."
               : hasCredit
-                ? "Upload & analyze"
+                ? "Upload securely & analyze"
                 : `Buy credit first — ${nextPrice}`}
           </Button>
         </Card>

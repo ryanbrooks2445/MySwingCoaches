@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export async function GET(
   _request: NextRequest,
@@ -22,6 +23,22 @@ export async function GET(
   if (error || !report) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });
   }
+
+  const service = createServiceClient();
+  const refreshedFrames = await Promise.all(
+    ((report.key_frame_urls ?? []) as Array<{
+      phase: string;
+      storage_path?: string;
+      url?: string;
+    }>).map(async (frame) => {
+      if (!frame.storage_path) return frame;
+      const { data } = await service.storage
+        .from("swing-frames")
+        .createSignedUrl(frame.storage_path, 3600);
+      return { ...frame, url: data?.signedUrl ?? undefined };
+    })
+  );
+  report.key_frame_urls = refreshedFrames;
 
   const { data: issues } = await supabase
     .from("swing_issues")

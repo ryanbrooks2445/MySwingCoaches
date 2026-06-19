@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 interface SimplifiedSwingReportProps {
   report: SimplifiedReport;
+  frames?: Array<{ phase: string; url?: string }>;
 }
 
 function Section({
@@ -46,15 +47,16 @@ function Section({
   );
 }
 
-export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
+export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingReportProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const adv = report.advanced_details;
   const isMaintenance = adv.report_mode === "maintenance";
   const showFoundationalLink = Boolean(adv.foundational_missing_piece?.trim());
-  const confidencePct = Math.round((adv.confidence_score ?? 0) * 100);
   const primaryDrill = report.drills[0];
-  const feels = report.tips_and_feels.slice(0, 3);
-  const plan = [
+  const primaryFeel = report.tips_and_feels[0];
+  const plan = report.practice_plan?.length
+    ? report.practice_plan
+    : [
     "Day 1-2: rehearsal swings only.",
     primaryDrill
       ? "Day 3-4: 15-20 half-speed balls with the drill feel."
@@ -67,36 +69,22 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
     <div className="mt-8 space-y-8">
       <Section
         number={1}
-        title="Coach Summary"
-        accentClass="bg-gradient-to-br from-sky-500 to-cyan-600"
-      >
-        <Card>
-          <ReportMarkdown content={report.pga_analysis} className="leading-relaxed" />
-        </Card>
-      </Section>
-
-      <Section
-        number={2}
-        title="Main Swing Leak"
+        title={isMaintenance ? "Main Priority" : "Main Swing Priority"}
         subtitle="The one thing to fix first"
-        accentClass={
-          isMaintenance
-            ? "bg-gradient-to-br from-teal-500 to-emerald-600"
-            : "bg-gradient-to-br from-amber-500 to-orange-600"
-        }
+        accentClass={isMaintenance ? "bg-emerald-600" : "bg-amber-600"}
       >
         <div
           className={cn(
-            "rounded-2xl border p-[1px] shadow-sm",
+            "rounded-lg border shadow-sm",
             isMaintenance ? "border-teal-500/40" : "border-amber-500/45"
           )}
         >
           <div
             className={cn(
-              "rounded-[calc(1rem-1px)] bg-gradient-to-br px-5 py-5",
+              "rounded-lg px-5 py-5",
               isMaintenance
-                ? "from-teal-500/15 via-emerald-400/5 to-[var(--color-card)]"
-                : "from-amber-500/20 via-orange-400/10 to-[var(--color-card)]"
+                ? "bg-emerald-50"
+                : "bg-amber-50"
             )}
           >
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
@@ -111,33 +99,60 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
       </Section>
 
       <Section
-        number={3}
-        title="What To Feel"
-        subtitle="Keep this to one pre-shot thought"
-        accentClass="bg-gradient-to-br from-violet-500 to-fuchsia-600"
+        number={2}
+        title="Evidence On Film"
+        subtitle="Why this priority came first"
+        accentClass="bg-sky-600"
       >
-        <ul className="space-y-3">
-          {feels.map((tip, i) => (
-            <li
-              key={tip}
-              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-3.5 text-sm leading-relaxed shadow-sm"
-            >
-              <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-card)] text-xs font-bold text-[var(--color-accent)] shadow-sm">
-                {i + 1}
-              </span>
-              <ReportMarkdown content={tip} className="inline text-[var(--color-foreground)]" />
-            </li>
-          ))}
-        </ul>
+        <Card>
+          <ul className="list-disc space-y-2 pl-5 text-sm text-[var(--color-muted)] marker:text-[var(--color-accent)]">
+            {adv.evidence_metrics.slice(0, 4).map((evidence) => (
+              <li key={evidence}>{evidence}</li>
+            ))}
+          </ul>
+          {frames.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {frames.slice(0, 6).map((frame) => (
+                <figure key={frame.phase} className="overflow-hidden rounded-lg border border-[var(--color-border)]">
+                  {frame.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={frame.url}
+                      alt={`${frame.phase.replaceAll("_", " ")} swing frame`}
+                      className="aspect-[4/3] w-full bg-black object-contain"
+                    />
+                  ) : null}
+                  <figcaption className="px-2 py-1.5 text-xs capitalize text-[var(--color-muted)]">
+                    {frame.phase.replaceAll("_", " ")}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
+        </Card>
+      </Section>
+
+      <Section
+        number={3}
+        title="One Feel"
+        subtitle="Use one thought before each rep"
+        accentClass="bg-violet-600"
+      >
+        <Card>
+          <ReportMarkdown
+            content={primaryFeel || report.main_fix}
+            className="text-base font-medium text-[var(--color-foreground)]"
+          />
+        </Card>
       </Section>
 
       <Section
         number={4}
-        title="Fix-It Drill"
-        subtitle="One drill until the move sticks"
-        accentClass="bg-gradient-to-br from-[var(--color-accent)] to-green-600"
+        title={isMaintenance ? "Pattern Drill" : "Priority Drill"}
+        subtitle={isMaintenance ? "Reinforce the pattern you want to keep" : "One drill until the move sticks"}
+        accentClass="bg-[var(--color-accent)]"
       >
-        <Card className="overflow-hidden border-[var(--color-accent)]/25 bg-gradient-to-br from-[var(--color-accent)]/8 to-transparent">
+        <Card className="overflow-hidden border-[var(--color-accent)]/25">
           <h3 className="font-semibold text-[var(--color-foreground)]">
             {primaryDrill?.name ?? "Main Feel Rehearsal"}
           </h3>
@@ -158,7 +173,7 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
         number={5}
         title="7-Day Practice Plan"
         subtitle="Simple reps, then prove it on video"
-        accentClass="bg-gradient-to-br from-indigo-500 to-violet-600"
+        accentClass="bg-indigo-600"
       >
         <Card>
           <ul className="space-y-3 text-sm leading-relaxed">
@@ -173,13 +188,23 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
         number={6}
         title="Next Upload Goal"
         subtitle="Film this on your next rep"
-        accentClass="bg-gradient-to-br from-indigo-500 to-violet-600"
+        accentClass="bg-indigo-600"
       >
         <Card>
           <ReportMarkdown
             content={report.next_swing_check}
             className="text-base font-medium text-[var(--color-foreground)]"
           />
+        </Card>
+      </Section>
+
+      <Section
+        number={7}
+        title="Coach Summary"
+        accentClass="bg-slate-600"
+      >
+        <Card>
+          <ReportMarkdown content={report.pga_analysis} className="leading-relaxed" />
         </Card>
       </Section>
 
@@ -192,7 +217,7 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
         >
             <span className="flex items-center gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-border)] text-sm text-[var(--color-muted)]">
-                7
+                8
               </span>
             Advanced Evidence
             {adv.report_mode && (
@@ -247,18 +272,6 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
                 <ReportMarkdown content={adv.symptom} className="mt-1" />
               </div>
             )}
-            {adv.evidence_metrics.length > 0 && (
-              <div>
-                <p className="text-xs font-medium uppercase text-[var(--color-muted)]">
-                  Evidence on film
-                </p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--color-muted)]">
-                  {adv.evidence_metrics.map((m) => (
-                    <li key={m}>{m}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {!isMaintenance && adv.secondary_fix?.trim() && (
               <div>
                 <p className="text-xs font-medium uppercase text-[var(--color-muted)]">
@@ -301,7 +314,6 @@ export function SimplifiedSwingReport({ report }: SimplifiedSwingReportProps) {
                 <ReportMarkdown content={adv.next_checkpoint} className="mt-1" />
               </div>
             )}
-            <p className="text-xs text-[var(--color-muted)]">Confidence: {confidencePct}%</p>
           </Card>
         )}
       </section>

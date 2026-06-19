@@ -39,8 +39,33 @@ export default async function ProgressPage() {
           {!reports?.length ? (
             <Card className="text-center text-[var(--color-muted)]">No completed analyses yet.</Card>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-[var(--color-border)]">
-              <table className="w-full text-sm">
+            <>
+              <div className="grid gap-3 md:hidden">
+                {reports.map((r) => {
+                  const report = r as SwingReport;
+                  const focus = getReportFocusLabel(report);
+                  return (
+                    <Card key={r.id} className="p-4">
+                      <p className="text-xs text-[var(--color-muted)]">
+                        {new Date(r.created_at).toLocaleDateString()}
+                      </p>
+                      <p className="mt-2 font-medium">{focus || "Completed swing analysis"}</p>
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <Link
+                          href={`/swings/${r.id}`}
+                          className="inline-flex min-h-11 items-center gap-2 text-sm text-[var(--color-accent)]"
+                        >
+                          <StatusBadge status="current_focus" />
+                          Open report
+                        </Link>
+                        <DeleteSwingButton reportId={r.id} />
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+              <div className="hidden overflow-hidden rounded-lg border border-[var(--color-border)] md:block">
+                <table className="w-full text-sm">
                 <thead className="bg-[var(--color-card)]">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Date</th>
@@ -76,8 +101,9 @@ export default async function ProgressPage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+            </>
           )}
         </section>
       </main>

@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getNextAnalysisPrice } from "@/lib/pricing";
 import { appUrl, getStripe, isStripeConfigured } from "@/lib/stripe";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   if (!isStripeConfigured()) {
     return NextResponse.json(
-      { error: "Stripe is not configured. Add STRIPE_SECRET_KEY to .env.local." },
+      { error: "Checkout is temporarily unavailable. Please contact support." },
       { status: 503 }
     );
   }
@@ -19,6 +20,13 @@ export async function POST() {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const limited = await enforceRateLimit(request, {
+    scope: "checkout",
+    identifier: user.id,
+    limit: 5,
+    windowSeconds: 3600,
+  });
+  if (limited) return limited;
 
   const serviceClient = createServiceClient();
   const { data: sub, error: fetchError } = await serviceClient
@@ -71,6 +79,7 @@ export async function POST() {
     metadata: {
       user_id: user.id,
       price_tier: price === 9.99 ? "intro" : "standard",
+      expected_amount_cents: String(unitAmount),
     },
     success_url: `${base}/pricing?checkout=success`,
     cancel_url: `${base}/pricing?checkout=cancelled`,

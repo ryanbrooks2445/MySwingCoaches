@@ -185,8 +185,8 @@ class AdvancedDetails(BaseModel):
 class CoachingReportSchema(BaseModel):
     personalized_greeting: str = Field(
         description=(
-            "RALLYING CRY. First name + aggressive praise for athletic traits seen in video. "
-            "Elite athlete tone. Max 35 words. No negative framing."
+            "First name if known, one genuine visible positive, then the priority. "
+            "No hype, handicap prediction, or unsupported praise. Max 25 words."
         )
     )
     pga_analysis: str = Field(
@@ -195,7 +195,7 @@ class CoachingReportSchema(BaseModel):
             "(NO markdown #): What's working, Setup to finish, then either "
             "The missing piece + What changes when you unlock it (development) OR "
             "What to keep doing + Your ceiling at this level (maintenance). "
-            "Athletic Upside tone. Use **bold** only for phase labels in Setup to finish."
+            "Clear, supportive, evidence-led tone. Use **bold** only for phase labels in Setup to finish."
         )
     )
     main_fix: str = Field(

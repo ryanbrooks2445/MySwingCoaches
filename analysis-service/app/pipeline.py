@@ -8,6 +8,7 @@ from app.frame_sampler import sample_keyframe_indices
 from app.gemini_coach import generate_coaching_report
 from app.persistence import mark_analysis_failed, persist_analysis_result, upload_key_frames
 from app.report_audit import audit_report_quality
+from app.media_validation import validate_and_normalize_video
 from app.schemas import AnalyzeRequest, CoachingReportSchema
 from app.trace_log import log_trace
 
@@ -21,6 +22,7 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
     user_id = request.user_id
     try:
         video_path = download_video(request.video_url)
+        validate_and_normalize_video(video_path)
         log_trace(
             "video_loaded",
             trace_id=trace_id,

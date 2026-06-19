@@ -64,7 +64,9 @@ export function UploadDropzone({ onFileSelect, disabled }: UploadDropzoneProps) 
       >
         <Upload className="mb-4 h-10 w-10 text-[var(--color-muted)]" />
         <p className="text-lg font-medium">Drop your swing video here</p>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">MP4 or MOV · max 100MB · max 30s recommended</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
+          MP4 or MOV · max 100 MB · 30 seconds or shorter
+        </p>
         <input
           type="file"
           accept="video/mp4,video/quicktime,.mp4,.mov"

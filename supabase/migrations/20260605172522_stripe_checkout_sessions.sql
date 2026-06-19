@@ -1,0 +1,2 @@
+-- History reconciliation: this change was applied directly to production.
+-- The equivalent schema is defined by 006_stripe_checkout_sessions.sql.

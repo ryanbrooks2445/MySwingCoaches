@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   isGolferProfileComplete,
@@ -64,7 +65,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }
 
-  const { error } = await supabase
+  const service = createServiceClient();
+  const { error } = await service
     .from("profiles")
     .update({
       age: validated.data.age,

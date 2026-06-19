@@ -18,6 +18,7 @@ export default function SwingReportPage() {
   const reportId = params.id as string;
   const [report, setReport] = useState<SwingReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     const res = await fetch(`/api/swings/${reportId}/status`);
@@ -92,9 +93,24 @@ export default function SwingReportPage() {
                 redirectTo="/dashboard"
               />
             </div>
-            <a href="/upload" className="mt-4 inline-block">
-              <Button>Try again</Button>
-            </a>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button
+                disabled={retrying}
+                onClick={async () => {
+                  setRetrying(true);
+                  const res = await fetch(`/api/swings/${reportId}/analyze`, { method: "POST" });
+                  const data = await res.json();
+                  if (!res.ok) setError(data.error || "Could not retry this analysis.");
+                  else await fetchStatus();
+                  setRetrying(false);
+                }}
+              >
+                {retrying ? "Queueing retry..." : "Retry analysis"}
+              </Button>
+              <a href="/upload">
+                <Button variant="secondary">Upload a new swing</Button>
+              </a>
+            </div>
           </Card>
         </main>
       </div>
@@ -119,7 +135,7 @@ export default function SwingReportPage() {
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
           {coaching?.personalized_greeting && (
-            <div className="relative overflow-hidden rounded-2xl border border-[var(--color-accent)]/30 bg-gradient-to-br from-[var(--color-accent)]/20 via-emerald-400/10 to-sky-400/5 px-5 py-4 shadow-sm">
+            <div className="relative overflow-hidden rounded-lg border border-[var(--color-accent)]/30 bg-emerald-50 px-5 py-4 shadow-sm">
               <p className="text-base font-medium leading-snug text-[var(--color-foreground)]">
                 {coaching.personalized_greeting}
               </p>
@@ -146,7 +162,12 @@ export default function SwingReportPage() {
         </header>
 
         {simplified ? (
-          <SimplifiedSwingReport report={simplified} />
+          <>
+            <SimplifiedSwingReport report={simplified} frames={report.key_frame_urls} />
+            <a href="/upload" className="mt-8 block">
+              <Button className="w-full" size="lg">Upload another swing</Button>
+            </a>
+          </>
         ) : (
           <Card className="mt-8">
             <p className="text-[var(--color-muted)]">
