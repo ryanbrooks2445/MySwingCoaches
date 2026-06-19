@@ -38,6 +38,32 @@ async function videoDuration(file: File): Promise<number> {
   });
 }
 
+function uploadErrorMessage(message: string): string {
+  if (message === "Failed to fetch") {
+    return "Your connection was interrupted. Please check your internet connection and try again.";
+  }
+  if (
+    message.includes("Unexpected end of JSON input") ||
+    message.includes("Failed to execute 'json'") ||
+    message.includes("Request Entity Too Large")
+  ) {
+    return "The video upload was interrupted. Your credit was restored. Please refresh and try a shorter MP4 or MOV.";
+  }
+  return message;
+}
+
+async function cancelUploadSession(sessionId: string): Promise<void> {
+  try {
+    await fetch("/api/swings/upload-cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    });
+  } catch {
+    // The scheduled cleanup job also restores abandoned upload credits.
+  }
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -86,6 +112,8 @@ export default function UploadPage() {
     setUploading(true);
     setError(null);
     setProgress(5);
+    let cancellableSessionId: string | null = null;
+    let uploadQueued = false;
 
     try {
       const supabase = createClient();
@@ -124,6 +152,7 @@ export default function UploadPage() {
       if (!intentRes.ok) {
         throw new Error(intent.error || "Could not prepare upload.");
       }
+      cancellableSessionId = intent.sessionId;
 
       setStatus("Uploading directly to private storage...");
       setProgress(35);
@@ -148,17 +177,17 @@ export default function UploadPage() {
       if (!registerRes.ok) {
         throw new Error(registered.error || "Could not queue analysis.");
       }
+      uploadQueued = true;
 
       setProgress(100);
       setStatus("Upload complete. You can leave this page while we analyze it.");
       router.push(`/swings/${registered.reportId}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
-      setError(
-        message === "Failed to fetch"
-          ? "Your connection was interrupted. Please check your internet connection and try again."
-          : message
-      );
+      if (cancellableSessionId && !uploadQueued) {
+        await cancelUploadSession(cancellableSessionId);
+      }
+      setError(uploadErrorMessage(message));
       setStatus(null);
     } finally {
       setUploading(false);

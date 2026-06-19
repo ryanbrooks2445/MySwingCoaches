@@ -125,3 +125,18 @@ test("all private functions revoke inherited public execution", async () => {
   assert.match(sql, /REVOKE ALL ON ALL FUNCTIONS IN SCHEMA private FROM PUBLIC/i);
   assert.match(sql, /ALTER DEFAULT PRIVILEGES IN SCHEMA private/i);
 });
+
+test("failed direct uploads cancel the session and restore the reserved credit", async () => {
+  const cancelRoute = await readFile(
+    new URL("../src/app/api/swings/upload-cancel/route.ts", import.meta.url),
+    "utf8"
+  );
+  const uploadPage = await readFile(new URL("../src/app/upload/page.tsx", import.meta.url), "utf8");
+
+  assert.match(cancelRoute, /service_restore_analysis_credit/);
+  assert.match(cancelRoute, /upload_cancelled/);
+  assert.match(cancelRoute, /session\.status === "registered"/);
+  assert.match(uploadPage, /fetch\("\/api\/swings\/upload-cancel"/);
+  assert.match(uploadPage, /Unexpected end of JSON input/);
+  assert.match(uploadPage, /Your credit was restored/);
+});
