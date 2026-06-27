@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
   if (
     listError ||
     !uploaded ||
-    (uploadedSize > 0 && uploadedSize !== Number(session.size_bytes))
+    uploadedSize <= 0 ||
+    uploadedSize !== Number(session.size_bytes)
   ) {
     await service.storage.from("swing-videos").remove([session.storage_path]);
     await service.from("upload_sessions").update({ status: "failed" }).eq("id", sessionId);

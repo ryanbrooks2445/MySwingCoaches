@@ -35,6 +35,26 @@ class ProFix(BaseModel):
     detail: str = Field(description="What to do and why it unlocks their path. 2-3 sentences.")
 
 
+class CategoryRating(BaseModel):
+    label: str = Field(description="Category name e.g. Power, Tempo, Balance")
+    rating: str = Field(description="Score out of 10 e.g. 8.5/10")
+
+
+class CoachVerdict(BaseModel):
+    overall_rating: str = Field(
+        default="",
+        description="Overall swing rating e.g. 7.5/10 overall",
+    )
+    biggest_positive: str = Field(default="", description="The single best thing on film")
+    main_issue: str = Field(default="", description="The primary mechanical issue")
+    best_fix: str = Field(default="", description="The one change to make first")
+    category_ratings: list[CategoryRating] = Field(
+        default_factory=list,
+        max_length=6,
+        description="Optional category scores e.g. Power 8.5/10",
+    )
+
+
 class FeelBlueprintDiagnostic(BaseModel):
     opening_narrative: str = Field(
         description=(
@@ -220,9 +240,13 @@ class CoachingReportSchema(BaseModel):
         description="USER-FACING: One clear thing to film or look for on next upload."
     )
     advanced_details: AdvancedDetails
+    coach_verdict: CoachVerdict | None = Field(
+        default=None,
+        description="Lead coach read: overall rating, category scores, positive, issue, and best fix.",
+    )
     feel_blueprint: FeelBlueprintDiagnostic | None = Field(
         default=None,
-        description="Optional deep narrative storage — leave null; use advanced_details instead.",
+        description="Full paid coach letter — strengths, missing-piece chain, ceilings, and pro fixes.",
     )
     blueprint: KinestheticBlueprint
     roadmap: AccountabilityPlan

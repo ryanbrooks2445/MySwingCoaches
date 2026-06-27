@@ -5,6 +5,7 @@ import type {
   SwingDiagnosisEngine,
   SwingReport,
 } from "@/lib/types";
+import { parseCoachVerdictFromAnalysis, resolveCoachVerdict } from "@/lib/coach-verdict";
 
 function hasSimplifiedReport(content: CoachingContent): boolean {
   return Boolean(content.pga_analysis?.trim() && content.main_fix?.trim());
@@ -136,7 +137,7 @@ function feelBlueprintToSimplified(content: CoachingContent, fb: FeelBlueprintDi
 
 export function getSimplifiedReport(content: CoachingContent): SimplifiedSwingReport {
   if (hasSimplifiedReport(content)) {
-    return {
+    const simplified: SimplifiedSwingReport = {
       pga_analysis: content.pga_analysis!,
       main_fix: content.main_fix!,
       tips_and_feels: content.tips_and_feels ?? [],
@@ -157,13 +158,28 @@ export function getSimplifiedReport(content: CoachingContent): SimplifiedSwingRe
         why_it_caused_the_miss: "",
         confidence_score: 0,
       },
+      coach_verdict:
+        resolveCoachVerdict(content, {
+          pga_analysis: content.pga_analysis,
+          main_fix: content.main_fix,
+        }) ?? undefined,
     };
+    return simplified;
   }
   if (content.diagnosis_engine) {
     return diagnosisToSimplified(content.diagnosis_engine, content);
   }
   if (content.feel_blueprint && hasNewFeelBlueprint(content)) {
-    return feelBlueprintToSimplified(content, content.feel_blueprint);
+    const simplified = feelBlueprintToSimplified(content, content.feel_blueprint);
+    simplified.coach_verdict =
+      resolveCoachVerdict(content, simplified) ??
+      parseCoachVerdictFromAnalysis(simplified.pga_analysis, {
+        biggest_positive: content.feel_blueprint.strengths[0]?.detail,
+        main_issue: content.feel_blueprint.flaws[0]?.detail,
+        best_fix: content.feel_blueprint.pro_fixes[0]?.detail,
+      }) ??
+      undefined;
+    return simplified;
   }
   if (content.diagnostic && content.blueprint) {
     const d = content.diagnostic;

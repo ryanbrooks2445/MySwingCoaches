@@ -3,7 +3,7 @@ import "./globals.css";
 import { SiteFooter } from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
-  title: "MySwingCoaches — AI Golf Swing Analysis",
+  title: "ForeFixed — AI Golf Swing Analysis",
   description: "Upload your swing. Get a coach-level breakdown in minutes.",
 };
 

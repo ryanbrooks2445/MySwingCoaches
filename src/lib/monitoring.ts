@@ -25,7 +25,7 @@ export async function captureServerError(
         "X-Sentry-Auth": [
           "Sentry sentry_version=7",
           `sentry_key=${parsed.username}`,
-          "sentry_client=myswingcoaches-next/1.0",
+          "sentry_client=forefixed-next/1.0",
         ].join(", "),
       },
       body: JSON.stringify({

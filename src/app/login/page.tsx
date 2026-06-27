@@ -40,7 +40,7 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <h1 className="text-2xl font-semibold">Log in</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">Welcome back to MySwingCoaches</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">Welcome back to ForeFixed</p>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <label className="block text-sm">
             <span className="font-medium">Email</span>

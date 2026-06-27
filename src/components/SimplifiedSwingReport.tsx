@@ -1,14 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { CoachVerdictCard } from "@/components/CoachVerdictCard";
+import { DrillVideoEmbed } from "@/components/DrillVideoEmbed";
+import { FeelBlueprintReport } from "@/components/FeelBlueprintReport";
 import { ReportMarkdown } from "@/components/ReportMarkdown";
 import { Card } from "@/components/ui/Card";
-import type { SimplifiedSwingReport as SimplifiedReport } from "@/lib/types";
+import { DRILL_CATALOG } from "@/lib/drill-videos";
+import {
+  confidenceBadgeClass,
+  confidenceLabel,
+  limitationBanners,
+  mergeFramesWithPhaseMap,
+} from "@/lib/phase-frames";
+import type { FeelBlueprintDiagnostic, KeyFrameUrl, PhaseFrame, SimplifiedSwingReport as SimplifiedReport } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface SimplifiedSwingReportProps {
   report: SimplifiedReport;
-  frames?: Array<{ phase: string; url?: string }>;
+  feelBlueprint?: FeelBlueprintDiagnostic | null;
+  frames?: KeyFrameUrl[];
+  phaseMap?: PhaseFrame[];
+  drillVideoUrl?: string | null;
+  drillVideoTitle?: string | null;
 }
 
 function Section({
@@ -47,30 +61,94 @@ function Section({
   );
 }
 
-export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingReportProps) {
+function resolveDrillVideo(drillName: string | undefined): { url: string; title: string } | null {
+  if (!drillName) return null;
+  const slug = drillName.toLowerCase().replace(/\s+/g, "_");
+  const entry = DRILL_CATALOG[slug];
+  if (entry) return { url: entry.embedUrl, title: entry.title };
+  return null;
+}
+
+export function SimplifiedSwingReport({
+  report,
+  feelBlueprint,
+  frames = [],
+  phaseMap,
+  drillVideoUrl,
+  drillVideoTitle,
+}: SimplifiedSwingReportProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const adv = report.advanced_details;
   const isMaintenance = adv.report_mode === "maintenance";
   const showFoundationalLink = Boolean(adv.foundational_missing_piece?.trim());
   const primaryDrill = report.drills[0];
   const primaryFeel = report.tips_and_feels[0];
+  const mergedFrames = mergeFramesWithPhaseMap(frames, phaseMap);
+  const banners = limitationBanners(phaseMap);
+  const drillFromCatalog = resolveDrillVideo(primaryDrill?.name);
+  const embedUrl = drillVideoUrl ?? drillFromCatalog?.url;
+  const embedTitle = drillVideoTitle ?? drillFromCatalog?.title;
+
   const plan = report.practice_plan?.length
     ? report.practice_plan
     : [
-    "Day 1-2: rehearsal swings only.",
-    primaryDrill
-      ? "Day 3-4: 15-20 half-speed balls with the drill feel."
-      : "Day 3-4: 15-20 half-speed balls with the main feel.",
-    "Day 5-6: blend the feel into normal swings.",
-    "Day 7: upload the recommended angle.",
-  ];
+        "Day 1-2: rehearsal swings only.",
+        primaryDrill
+          ? "Day 3-4: 15-20 half-speed balls with the drill feel."
+          : "Day 3-4: 15-20 half-speed balls with the main feel.",
+        "Day 5-6: blend the feel into normal swings.",
+        "Day 7: upload the recommended angle.",
+      ];
+
+  const hasQuickVerdict = /quick coach verdict/i.test(report.pga_analysis);
+  const showCoachLetter = Boolean(feelBlueprint) && !report.coach_verdict && !hasQuickVerdict;
+  const sectionOffset = showCoachLetter ? 1 : 0;
 
   return (
     <div className="mt-8 space-y-8">
+      {banners.length > 0 && (
+        <div className="space-y-2">
+          {banners.map((banner) => (
+            <div
+              key={banner}
+              className="rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              {banner}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {report.coach_verdict && <CoachVerdictCard verdict={report.coach_verdict} />}
+
+      {showCoachLetter && feelBlueprint && (
+        <Section
+          number={1}
+          title="Your Coach Letter"
+          subtitle="Full PGA read on your swing"
+          accentClass="bg-emerald-700"
+        >
+          <FeelBlueprintReport feel={feelBlueprint} />
+        </Section>
+      )}
+
+      {report.pga_analysis.trim() && (
+        <Section
+          number={1 + sectionOffset}
+          title="Full Swing Analysis"
+          subtitle="What your coach saw on film"
+          accentClass="bg-emerald-700"
+        >
+          <Card>
+            <ReportMarkdown content={report.pga_analysis} className="leading-relaxed" variant="phases" />
+          </Card>
+        </Section>
+      )}
+
       <Section
-        number={1}
+        number={2 + sectionOffset}
         title={isMaintenance ? "Main Priority" : "Main Swing Priority"}
-        subtitle="The one thing to fix first"
+        subtitle="The one thing to change first"
         accentClass={isMaintenance ? "bg-emerald-600" : "bg-amber-600"}
       >
         <div
@@ -82,9 +160,7 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
           <div
             className={cn(
               "rounded-lg px-5 py-5",
-              isMaintenance
-                ? "bg-emerald-50"
-                : "bg-amber-50"
+              isMaintenance ? "bg-emerald-50" : "bg-amber-50"
             )}
           >
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
@@ -96,12 +172,20 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
             />
           </div>
         </div>
+        {!isMaintenance && adv.secondary_fix?.trim() && (
+          <Card className="mt-3 border-sky-500/25 bg-sky-50/50">
+            <p className="text-xs font-semibold uppercase tracking-wider text-sky-700">
+              Secondary focus
+            </p>
+            <ReportMarkdown content={adv.secondary_fix} className="mt-2 text-sm" />
+          </Card>
+        )}
       </Section>
 
       <Section
-        number={2}
+        number={3 + sectionOffset}
         title="Evidence On Film"
-        subtitle="Why this priority came first"
+        subtitle="What the camera could verify"
         accentClass="bg-sky-600"
       >
         <Card>
@@ -110,30 +194,51 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
               <li key={evidence}>{evidence}</li>
             ))}
           </ul>
-          {frames.length > 0 && (
+          {mergedFrames.length > 0 && (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {frames.slice(0, 6).map((frame) => (
-                <figure key={frame.phase} className="overflow-hidden rounded-lg border border-[var(--color-border)]">
-                  {frame.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={frame.url}
-                      alt={`${frame.phase.replaceAll("_", " ")} swing frame`}
-                      className="aspect-[4/3] w-full bg-black object-contain"
-                    />
-                  ) : null}
-                  <figcaption className="px-2 py-1.5 text-xs capitalize text-[var(--color-muted)]">
-                    {frame.phase.replaceAll("_", " ")}
-                  </figcaption>
-                </figure>
-              ))}
+              {mergedFrames
+                .filter((frame) => frame.person_visible !== false || (frame.confidence ?? 0) >= 0.35)
+                .slice(0, 8)
+                .map((frame) => {
+                  const label = confidenceLabel(frame.confidence);
+                  const dimmed = frame.person_visible === false || label === "Not visible";
+                  return (
+                    <figure
+                      key={frame.phase}
+                      className={cn(
+                        "overflow-hidden rounded-lg border border-[var(--color-border)]",
+                        dimmed && "opacity-50"
+                      )}
+                    >
+                      {frame.url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={frame.url}
+                          alt={`${frame.phase.replaceAll("_", " ")} swing frame`}
+                          className="aspect-[4/3] w-full bg-black object-contain"
+                        />
+                      ) : null}
+                      <figcaption className="flex flex-wrap items-center gap-1 px-2 py-1.5 text-xs text-[var(--color-muted)]">
+                        <span className="capitalize">{frame.phase.replaceAll("_", " ")}</span>
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                            confidenceBadgeClass(label)
+                          )}
+                        >
+                          {label}
+                        </span>
+                      </figcaption>
+                    </figure>
+                  );
+                })}
             </div>
           )}
         </Card>
       </Section>
 
       <Section
-        number={3}
+        number={4 + sectionOffset}
         title="One Feel"
         subtitle="Use one thought before each rep"
         accentClass="bg-violet-600"
@@ -147,7 +252,7 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
       </Section>
 
       <Section
-        number={4}
+        number={5 + sectionOffset}
         title={isMaintenance ? "Pattern Drill" : "Priority Drill"}
         subtitle={isMaintenance ? "Reinforce the pattern you want to keep" : "One drill until the move sticks"}
         accentClass="bg-[var(--color-accent)]"
@@ -163,14 +268,20 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
             How to do it
           </p>
           <ReportMarkdown
-            content={primaryDrill?.how_to_do_it ?? "Make slow rehearsal swings, then hit 15-20 balls at 60% speed with the main feel."}
+            content={
+              primaryDrill?.how_to_do_it ??
+              "Make slow rehearsal swings, then hit 15-20 balls at 60% speed with the main feel."
+            }
             className="mt-1 text-sm"
           />
+          {embedUrl && (
+            <DrillVideoEmbed videoUrl={embedUrl} title={embedTitle ?? undefined} className="mt-4" />
+          )}
         </Card>
       </Section>
 
       <Section
-        number={5}
+        number={6 + sectionOffset}
         title="7-Day Practice Plan"
         subtitle="Simple reps, then prove it on video"
         accentClass="bg-indigo-600"
@@ -185,7 +296,7 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
       </Section>
 
       <Section
-        number={6}
+        number={7 + sectionOffset}
         title="Next Upload Goal"
         subtitle="Film this on your next rep"
         accentClass="bg-indigo-600"
@@ -198,16 +309,6 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
         </Card>
       </Section>
 
-      <Section
-        number={7}
-        title="Coach Summary"
-        accentClass="bg-slate-600"
-      >
-        <Card>
-          <ReportMarkdown content={report.pga_analysis} className="leading-relaxed" />
-        </Card>
-      </Section>
-
       <section>
         <button
           type="button"
@@ -215,10 +316,10 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
           className="flex w-full items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-[var(--color-border)]/20"
           aria-expanded={advancedOpen}
         >
-            <span className="flex items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-border)] text-sm text-[var(--color-muted)]">
-                8
-              </span>
+          <span className="flex items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-border)] text-sm text-[var(--color-muted)]">
+              {8 + sectionOffset}
+            </span>
             Advanced Evidence
             {adv.report_mode && (
               <span className="text-xs font-normal text-[var(--color-muted)]">({adv.report_mode})</span>
@@ -270,14 +371,6 @@ export function SimplifiedSwingReport({ report, frames = [] }: SimplifiedSwingRe
               <div>
                 <p className="text-xs font-medium uppercase text-[var(--color-muted)]">Symptom</p>
                 <ReportMarkdown content={adv.symptom} className="mt-1" />
-              </div>
-            )}
-            {!isMaintenance && adv.secondary_fix?.trim() && (
-              <div>
-                <p className="text-xs font-medium uppercase text-[var(--color-muted)]">
-                  Secondary fix
-                </p>
-                <ReportMarkdown content={adv.secondary_fix} className="mt-1" />
               </div>
             )}
             {!isMaintenance && adv.optional_fix?.trim() && (
