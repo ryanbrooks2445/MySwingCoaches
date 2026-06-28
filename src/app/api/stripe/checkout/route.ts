@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { PRICE_PER_SWING_UPLOAD_CENTS } from "@/lib/pricing";
+import { PRICE_PER_ANALYSIS_CENTS } from "@/lib/pricing";
 import { appUrl, getStripe, isStripeConfigured } from "@/lib/stripe";
 import { enforceRateLimit } from "@/lib/rate-limit";
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Subscription not found" }, { status: 404 });
   }
 
-  const unitAmount = PRICE_PER_SWING_UPLOAD_CENTS;
+  const unitAmount = PRICE_PER_ANALYSIS_CENTS;
 
   const stripe = getStripe();
   let customerId = sub.stripe_customer_id as string | null;
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
           currency: "usd",
           unit_amount: unitAmount,
           product_data: {
-            name: "ForeFixed — Swing Analysis",
+            name: "MySwingCoaches — Swing Analysis",
             description: "One swing upload with AI coaching feedback",
           },
         },

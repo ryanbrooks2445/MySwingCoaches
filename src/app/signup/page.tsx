@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
-import { PRICE_FIRST_ANALYSIS_DISPLAY, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+import { PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
 
 function SignupForm() {
   const router = useRouter();
@@ -48,7 +48,7 @@ function SignupForm() {
       <Card className="w-full max-w-md">
         <h1 className="text-2xl font-semibold">Create account</h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">
-          Free account · first swing {PRICE_FIRST_ANALYSIS_DISPLAY}, then {PRICE_PER_ANALYSIS_DISPLAY} each
+          Free account · swing analyses are {PRICE_PER_ANALYSIS_DISPLAY} each
         </p>
 
         {pendingLogin ? (

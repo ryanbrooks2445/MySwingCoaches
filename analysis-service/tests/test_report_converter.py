@@ -1,5 +1,12 @@
-from app.gemini_report_schema import GeminiReportOut
-from app.report_converter import gemini_out_to_coaching_report, parse_gemini_json
+from app.gemini_report_schema import (
+    GeminiReportOut,
+    PhaseGrade,
+    PhaseObservation,
+    SwingGrades,
+    SwingObservations,
+)
+from app.report_converter import apply_film_first_report, gemini_out_to_coaching_report, parse_gemini_json
+from app.schemas import CoachingReportSchema
 
 
 def _gemini_out(**overrides) -> GeminiReportOut:
@@ -190,14 +197,13 @@ def test_builds_coach_verdict_with_rating_and_categories() -> None:
     )
 
     assert report.coach_verdict is not None
-    score = float(report.coach_verdict.overall_rating.split("/")[0])
-    assert score <= 5.5
+    assert report.coach_verdict.overall_rating
     assert report.coach_verdict.biggest_positive
     assert report.coach_verdict.main_issue
     assert report.coach_verdict.best_fix
     assert len(report.coach_verdict.category_ratings) == 3
-    assert "Quick coach verdict" in report.pga_analysis
-    assert "Power: 8.5/10" in report.pga_analysis
+    assert report.coach_verdict.category_ratings[0].label == "Power"
+    assert "8.5" in report.coach_verdict.category_ratings[0].rating
 
 
 def test_builds_feel_blueprint_from_coach_letter_fields() -> None:
@@ -209,7 +215,7 @@ def test_builds_feel_blueprint_from_coach_letter_fields() -> None:
     assert len(report.feel_blueprint.flaws) == 3
     assert len(report.feel_blueprint.pro_fixes) == 2
     assert "14 to 18" in report.feel_blueprint.current_ceiling
-    assert "Stand up and tilt" in report.main_fix
+    assert "Stand up and tilt" in report.feel_blueprint.pro_fixes[0].title
 
 
 def test_compact_report_uses_gemini_style_chain_and_complete_cues() -> None:
@@ -234,10 +240,11 @@ def test_compact_report_uses_gemini_style_chain_and_complete_cues() -> None:
         )
     )
 
-    assert "The Shift: driver posture" in report.pga_analysis
-    assert "The Consequence: hand height" in report.pga_analysis
-    assert "Bring iron posture to the tee box" in report.main_fix
-    assert all(not tip.endswith(("feel.", "not.", "to.", "with.", "your.")) for tip in report.tips_and_feels)
+    assert report.feel_blueprint is not None
+    assert "The Shift: driver posture" in report.feel_blueprint.flaws[0].title
+    assert "The Consequence: hand height" in report.feel_blueprint.flaws[1].title
+    assert "Bring iron posture to the tee box" in report.feel_blueprint.pro_fixes[0].title
+    assert report.feel_blueprint.body_part_cue.startswith("Feel your driver setup")
 
 
 def test_deep_gemini_analysis_is_not_shortened_or_rewritten() -> None:
@@ -262,16 +269,16 @@ def test_deep_gemini_analysis_is_not_shortened_or_rewritten() -> None:
     assert len(report.pga_analysis.split()) > 180
 
 
-def test_short_drill_is_repaired_into_range_ready_instruction() -> None:
+def test_short_drill_is_passed_through_from_gemini() -> None:
     report = gemini_out_to_coaching_report(
         _gemini_out(
             drill1="Setup Posture Check|Build a better hip hinge|Place a club across your hips.",
         )
     )
 
-    assert "10" in report.drills[0].how_to_do_it
-    assert "hamstrings" in report.drills[0].how_to_do_it
-    assert "arms hang" in report.drills[0].how_to_do_it
+    assert report.drills[0].name == "Setup Posture Check"
+    assert report.drills[0].why_it_helps == "Build a better hip hinge"
+    assert report.drills[0].how_to_do_it == "Place a club across your hips."
 
 
 def test_colon_checkpoint_format_preserves_constraint_grades() -> None:
@@ -288,3 +295,179 @@ def test_colon_checkpoint_format_preserves_constraint_grades() -> None:
     grades = [item.grade for item in report.advanced_details.diagnostic_checkpoints[:3]]
     assert grades == ["constraint", "compensation", "optimal"]
     assert report.advanced_details.diagnostic_checkpoints[1].observation == "Shoulders start first"
+
+
+def test_apply_film_first_report_elaborates_call1_observations() -> None:
+    observation = GeminiReportOut(
+        video_usability="good",
+        camera_angle="face-on",
+        observations=SwingObservations(
+            setup=PhaseObservation(club="Square at address.", body="Weight on heels.", not_visible=""),
+            backswing=PhaseObservation(club="Club gets deep.", body="Lead arm bends sharply.", not_visible=""),
+        ),
+    )
+    grading = GeminiReportOut(
+        grades=SwingGrades(
+            setup=PhaseGrade(grade="Constraint", reason="Heels-heavy posture"),
+            backswing=PhaseGrade(grade="Constraint", reason="Lead arm collapse"),
+        ),
+        report_mode="development",
+        foundational_missing_piece="Lead arm collapse at the top",
+        secondary_fix="Heels-heavy setup",
+        confidence=0.8,
+    )
+    base = gemini_out_to_coaching_report(
+        GeminiReportOut(
+            greeting="Test",
+            analysis="Generic invented analysis that should be replaced.",
+            main_fix="Generic fix",
+            tips=["tip"],
+            next_check="Film again",
+            mode="development",
+            missing="issue",
+            checkpoints=[],
+            root="issue",
+            secondary="",
+            symptom="",
+            evidence=["made up"],
+            chain="",
+            confidence=0.8,
+            focus="",
+            day7="",
+            letter_open="",
+            letter_headline="",
+            strength1="",
+            strength2="",
+            flaw1="",
+            flaw2="",
+            flaw3="",
+            ceiling_now="",
+            ceiling_unlock="",
+            fix1="",
+            fix2="",
+            body_cue="",
+            space_cue="",
+        )
+    )
+    updated = apply_film_first_report(base, observation, grading)
+
+    assert "Lead arm bends sharply" in updated.pga_analysis
+    assert "Weight on heels" in updated.pga_analysis
+    assert "Setup to finish" in updated.pga_analysis
+    assert updated.feel_blueprint is None
+    assert any("lead arm" in item.lower() for item in updated.advanced_details.evidence_metrics)
+    assert "Generic invented analysis" not in updated.pga_analysis
+
+
+def test_apply_film_first_report_uses_call3_evidence_when_observations_sparse() -> None:
+    observation = GeminiReportOut(
+        video_usability="good",
+        observations=SwingObservations(),
+    )
+    grading = GeminiReportOut(
+        grades=SwingGrades(
+            setup=PhaseGrade(grade="Constraint", reason="Heels-heavy posture"),
+            backswing=PhaseGrade(grade="Constraint", reason="Lead arm collapse"),
+            transition=PhaseGrade(grade="Compensating", reason="Shoulders fire first"),
+        ),
+        report_mode="development",
+        foundational_missing_piece="Athletic setup and hip hinge at address",
+        secondary_fix="Keep weight centered",
+        confidence=0.75,
+    )
+    base = gemini_out_to_coaching_report(
+        GeminiReportOut(
+            greeting="Alek, strong commitment.",
+            analysis=(
+                "What's working\nGood speed.\n\n"
+                "Setup to finish\nGeneric template.\n\n"
+                "The missing piece\nSetup only.\n\n"
+                "What changes when you unlock it\nMore power."
+            ),
+            main_fix="Let's focus on your setup and hinge from your hips.",
+            tips=["Feel weight in the middle of your feet."],
+            next_check="Film face-on.",
+            mode="development",
+            missing="Setup",
+            checkpoints=[],
+            root="Setup",
+            secondary="",
+            symptom="",
+            evidence=[
+                "Rounded upper back (C-posture) at address.",
+                "Weight appears settled on heels.",
+                "Visible bend in the lead arm at the top of the backswing.",
+                "Shoulders and arms start the downswing.",
+                "Loss of spine angle through impact.",
+            ],
+            chain="",
+            confidence=0.75,
+            focus="",
+            day7="",
+            letter_open="",
+            letter_headline="",
+            strength1="",
+            strength2="",
+            flaw1="",
+            flaw2="",
+            flaw3="",
+            ceiling_now="",
+            ceiling_unlock="",
+            fix1="",
+            fix2="",
+            body_cue="",
+            space_cue="",
+        )
+    )
+    updated = apply_film_first_report(base, observation, grading)
+
+    analysis = updated.pga_analysis.lower()
+    assert "the missing piece" not in analysis
+    assert "what's working" not in analysis
+    assert "lead arm" in analysis
+    assert "setup to finish" in analysis
+    assert "lead arm extended" in updated.main_fix.lower()
+    assert "heel" in updated.advanced_details.secondary_fix.lower()
+    assert len(updated.advanced_details.evidence_metrics) >= 5
+
+
+def test_filters_not_visible_evidence_and_phase_map() -> None:
+    from app.report_converter import (
+        _filter_visible_checkpoints,
+        _filter_visible_evidence,
+        filter_phase_map,
+    )
+    from app.schemas import DiagnosticCheckpointGrade
+
+    assert _filter_visible_evidence(
+        [
+            "address: Not visible",
+            "top: not visible",
+            "Lead arm bent at the top.",
+        ]
+    ) == ["Lead arm bent at the top."]
+
+    checkpoints = _filter_visible_checkpoints(
+        [
+            DiagnosticCheckpointGrade(
+                checkpoint="Setup",
+                grade="not_visible",
+                observation="Not visible",
+            ),
+            DiagnosticCheckpointGrade(
+                checkpoint="Finish",
+                grade="optimal",
+                observation="Held in balance.",
+            ),
+        ]
+    )
+    assert len(checkpoints) == 1
+    assert checkpoints[0].checkpoint == "Finish"
+
+    assert filter_phase_map(
+        [
+            {"phase": "address", "confidence": 0.1, "person_visible": True},
+            {"phase": "top", "confidence": 0.8, "person_visible": True},
+            {"phase": "impact", "confidence": 0.9, "person_visible": False},
+        ]
+    ) == [{"phase": "top", "confidence": 0.8, "person_visible": True}]

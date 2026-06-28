@@ -225,7 +225,6 @@ class CoachingReportSchema(BaseModel):
         )
     )
     tips_and_feels: list[str] = Field(
-        min_length=2,
         max_length=4,
         description=(
             "USER-FACING: Tactile feels/tricks to execute the fix. "

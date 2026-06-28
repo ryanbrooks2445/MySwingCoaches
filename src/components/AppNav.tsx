@@ -33,7 +33,7 @@ export function AppNav() {
     <header className="border-b border-[var(--color-border)] bg-[var(--color-card)]/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
         <Link href="/dashboard" className="text-lg font-semibold tracking-tight">
-          ForeFixed
+          MySwingCoaches
         </Link>
         <nav className="hidden items-center gap-5 md:flex">
           {links.map((link) => (

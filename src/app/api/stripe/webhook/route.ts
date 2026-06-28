@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import type Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import { PRICE_PER_ANALYSIS_CENTS } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ async function fulfillCheckoutSession(session: Stripe.Checkout.Session): Promise
     session.mode !== "payment" ||
     session.payment_status !== "paid" ||
     session.currency !== "usd" ||
-    ![999, 1999].includes(amount) ||
+    amount !== PRICE_PER_ANALYSIS_CENTS ||
     amount !== expectedAmount
   ) {
     throw new Error("Checkout session payment details did not match the expected analysis price");

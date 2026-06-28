@@ -596,6 +596,55 @@ def _parse_checkpoint(raw: str) -> DiagnosticCheckpointGrade:
     )
 
 
+def _is_visible_evidence_line(line: str) -> bool:
+    text = (line or "").strip()
+    if not text:
+        return False
+    lower = text.lower()
+    if lower.endswith("not visible") or lower.endswith(": not visible"):
+        return False
+    if re.fullmatch(r"[\w\s]+:\s*not visible\.?", lower):
+        return False
+    if "| not visible" in lower or "|not visible" in lower:
+        return False
+    return True
+
+
+def _filter_visible_checkpoints(
+    checkpoints: list[DiagnosticCheckpointGrade],
+) -> list[DiagnosticCheckpointGrade]:
+    visible: list[DiagnosticCheckpointGrade] = []
+    for item in checkpoints:
+        if item.grade == "not_visible":
+            continue
+        observation = (item.observation or "").strip()
+        checkpoint = (item.checkpoint or "").strip()
+        if not observation and not checkpoint:
+            continue
+        if observation.lower() in {"not visible", "n/a"}:
+            continue
+        visible.append(item)
+    return visible
+
+
+def _filter_visible_evidence(lines: list[str]) -> list[str]:
+    return [line.strip() for line in lines if _is_visible_evidence_line(line)]
+
+
+def filter_phase_map(phase_map: list[dict] | None) -> list[dict]:
+    if not phase_map:
+        return []
+    visible: list[dict] = []
+    for item in phase_map:
+        if item.get("person_visible") is False:
+            continue
+        confidence = float(item.get("confidence") or 0)
+        if confidence < 0.35:
+            continue
+        visible.append(item)
+    return visible
+
+
 def _clamp_confidence(value: float) -> float:
     if value != value:  # NaN
         return 0.75
@@ -1137,6 +1186,352 @@ def _observer_payload(out: GeminiReportOut) -> dict:
     return payload
 
 
+_PHASE_ORDER = (
+    "setup",
+    "takeaway",
+    "backswing",
+    "transition",
+    "downswing",
+    "impact",
+    "finish",
+)
+
+
+def _phase_display_name(phase: str) -> str:
+    return phase.replace("_", " ").title()
+
+
+_PHASE_EVIDENCE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "setup": ("address", "setup", "posture", "heel", "stance", "grip", "c-posture", "rounded", "upper back"),
+    "takeaway": ("takeaway", "first move", "initial"),
+    "backswing": ("backswing", "top", "lead arm", "arm bend", "width", "collapse", "takeback"),
+    "transition": ("transition", "start the downswing", "shoulders and arms", "shoulders start", "upper body first"),
+    "downswing": ("downswing", "path", "steep", "shallow", "over-the-top", "slot"),
+    "impact": ("impact", "spine angle", "early extension", "contact", "strike", "low point", "spine"),
+    "finish": ("finish", "follow through", "balance at finish"),
+}
+
+
+def _observations_have_content(observation: GeminiReportOut) -> bool:
+    if not observation.observations:
+        return False
+    for phase in _PHASE_ORDER:
+        obs = observation.observations.model_dump().get(phase, {})
+        if isinstance(obs, dict) and any(str(obs.get(key, "")).strip() for key in ("club", "body", "not_visible")):
+            return True
+    return False
+
+
+def _phase_for_evidence_line(line: str) -> str | None:
+    lower = line.lower()
+    best_phase: str | None = None
+    best_score = 0
+    for phase, keywords in _PHASE_EVIDENCE_KEYWORDS.items():
+        score = sum(1 for keyword in keywords if keyword in lower)
+        if score > best_score:
+            best_score = score
+            best_phase = phase
+    return best_phase if best_score > 0 else None
+
+
+def _resolve_film_evidence(combined: GeminiReportOut, report: CoachingReportSchema) -> list[str]:
+    """Prefer structured Call 1 lines; merge accurate Call 3 evidence bullets when needed."""
+    structured = _film_evidence_lines(combined, max_words=200)
+    call3 = [item.strip() for item in report.advanced_details.evidence_metrics if item.strip()]
+    if structured:
+        merged = list(structured)
+        seen = {line.lower() for line in merged}
+        for line in call3:
+            lower = line.lower()
+            if lower in seen:
+                continue
+            if any(lower in existing.lower() or existing.lower() in lower for existing in merged):
+                continue
+            merged.append(line)
+            seen.add(lower)
+        return merged[:12]
+    return call3[:12]
+
+
+def _film_walkthrough_from_evidence(
+    evidence_lines: list[str],
+    combined: GeminiReportOut,
+    coach_verdict: CoachVerdict | None,
+) -> str:
+    """Build phase walkthrough by grouping accurate film evidence lines."""
+    if not evidence_lines:
+        return ""
+
+    by_phase: dict[str, list[str]] = {phase: [] for phase in _PHASE_ORDER}
+    general: list[str] = []
+    for line in evidence_lines:
+        phase = _phase_for_evidence_line(line)
+        if phase:
+            by_phase[phase].append(line)
+        else:
+            general.append(line)
+
+    grade_map = combined.grades.model_dump() if combined.grades else {}
+    phase_blocks: list[str] = []
+    for phase in _PHASE_ORDER:
+        lines = by_phase[phase]
+        if not lines:
+            continue
+        block = [f"**{_phase_display_name(phase)}**", *lines]
+        grade_info = grade_map.get(phase, {})
+        if isinstance(grade_info, dict):
+            grade = str(grade_info.get("grade", "")).strip()
+            reason = str(grade_info.get("reason", "")).strip()
+            if grade and grade != "Not Visible":
+                coach_line = f"Coach read: {grade}"
+                if reason:
+                    coach_line += f" — {reason}"
+                block.append(coach_line)
+        phase_blocks.append("\n".join(block))
+
+    if general:
+        phase_blocks.append("**Other on film**\n" + "\n".join(general))
+
+    sections = ["Setup to finish", "\n\n".join(phase_blocks)]
+    if combined.usability_note.strip():
+        sections.append(f"Camera note\n\n{combined.usability_note.strip()}")
+    return "\n\n".join(sections).strip()
+
+
+def _film_priority_main_fix(
+    grading: GeminiReportOut,
+    evidence_lines: list[str],
+    fallback: str,
+) -> str:
+    """Prefer the earliest visible dynamic issue over a generic setup-only lesson."""
+    blob = " ".join(evidence_lines).lower()
+    foundation = (grading.foundational_missing_piece or fallback or "").strip()
+    setup_only = foundation and all(
+        term not in foundation.lower()
+        for term in ("arm", "path", "transition", "downswing", "impact", "spine", "shoulder", "sequenc")
+    ) and any(term in foundation.lower() for term in ("setup", "posture", "heel", "address", "stance"))
+
+    dynamic_count = sum(
+        1
+        for terms in (
+            ("lead arm", "arm bend", "collapse", "at the top"),
+            ("shoulder", "arms start", "sequenc", "upper body"),
+            ("spine", "early extension", "stand up", "through impact"),
+        )
+        if any(term in blob for term in terms)
+    )
+    if not setup_only or dynamic_count < 1:
+        return foundation or fallback
+
+    if any(term in blob for term in ("lead arm", "arm bend", "collapse", "at the top")):
+        return (
+            "Keep the lead arm extended through the top instead of folding it across your chest. "
+            "That width is what lets the downswing sequence from the ground up."
+        )
+    if any(term in blob for term in ("shoulder", "arms start", "sequenc")):
+        return (
+            "Start the downswing from the lower body before the shoulders and arms fire. "
+            "The film shows the upper body leading — let pressure shift first, then turn."
+        )
+    if any(term in blob for term in ("spine", "early extension", "stand up", "through impact")):
+        return (
+            "Maintain your spine angle through impact instead of standing up to help the club. "
+            "Stay in the posture you set while the body rotates through."
+        )
+    return foundation or fallback
+
+
+def _film_secondary_fix(grading: GeminiReportOut, evidence_lines: list[str], main_fix: str) -> str:
+    blob = " ".join(evidence_lines).lower()
+    if any(term in blob for term in ("heel", "posture", "rounded", "c-posture", "upper back")):
+        setup_context = (
+            "Setup context: balance weight over the middle of your feet, not your heels, "
+            "and hinge from the hips instead of rounding the upper back."
+        )
+        if setup_context.lower() not in main_fix.lower():
+            return setup_context
+    return (grading.secondary_fix or "").strip()
+
+
+def _film_evidence_lines(out: GeminiReportOut, *, max_words: int = 120) -> list[str]:
+    """Detailed per-phase film evidence from Call 1 observations."""
+    if not out.observations:
+        return []
+    grade_map = out.grades.model_dump() if out.grades else {}
+    lines: list[str] = []
+    for phase in _PHASE_ORDER:
+        observation = out.observations.model_dump().get(phase, {})
+        if not isinstance(observation, dict):
+            continue
+        club = str(observation.get("club", "")).strip()
+        body = str(observation.get("body", "")).strip()
+        not_visible = str(observation.get("not_visible", "")).strip()
+        if not any((club, body, not_visible)):
+            continue
+        parts: list[str] = []
+        if club:
+            parts.append(f"Club: {club}")
+        if body:
+            parts.append(f"Body: {body}")
+        if not_visible:
+            parts.append(f"Camera: {not_visible}")
+        grade_info = grade_map.get(phase, {})
+        if isinstance(grade_info, dict):
+            grade = str(grade_info.get("grade", "")).strip()
+            reason = str(grade_info.get("reason", "")).strip()
+            if grade and grade != "Not Visible":
+                grade_line = f"Grade: {grade}"
+                if reason:
+                    grade_line += f" — {reason}"
+                parts.append(grade_line)
+        lines.append(_cap_words(f"{_phase_display_name(phase)} — {' '.join(parts)}", max_words))
+    return lines
+
+
+def _film_walkthrough_analysis(out: GeminiReportOut, coach_verdict: CoachVerdict | None = None) -> str:
+    """Build user-facing analysis by elaborating Call 1 observations phase by phase."""
+    if not out.observations:
+        return ""
+
+    sections: list[str] = []
+    if coach_verdict and coach_verdict.overall_rating and not coach_verdict.main_issue:
+        verdict_parts = [
+            coach_verdict.overall_rating,
+            f"The big positive: {coach_verdict.biggest_positive}" if coach_verdict.biggest_positive else "",
+            f"Main issue: {coach_verdict.main_issue}" if coach_verdict.main_issue else "",
+            f"Best fix: {coach_verdict.best_fix}" if coach_verdict.best_fix else "",
+        ]
+        verdict_text = "\n".join(part for part in verdict_parts if part)
+        if verdict_text:
+            sections.append(f"Quick coach verdict\n\n{verdict_text}")
+
+    sections.append("Setup to finish")
+    grade_map = out.grades.model_dump() if out.grades else {}
+    phase_blocks: list[str] = []
+    for phase in _PHASE_ORDER:
+        observation = out.observations.model_dump().get(phase, {})
+        if not isinstance(observation, dict):
+            continue
+        club = str(observation.get("club", "")).strip()
+        body = str(observation.get("body", "")).strip()
+        not_visible = str(observation.get("not_visible", "")).strip()
+        if not any((club, body, not_visible)):
+            continue
+        lines = [f"**{_phase_display_name(phase)}**"]
+        if club:
+            lines.append(f"Club: {club}")
+        if body:
+            lines.append(f"Body: {body}")
+        if not_visible:
+            lines.append(f"Camera limit: {not_visible}")
+        grade_info = grade_map.get(phase, {})
+        if isinstance(grade_info, dict):
+            grade = str(grade_info.get("grade", "")).strip()
+            reason = str(grade_info.get("reason", "")).strip()
+            if grade:
+                coach_line = f"Coach read: {grade}"
+                if reason:
+                    coach_line += f" — {reason}"
+                lines.append(coach_line)
+        phase_blocks.append("\n".join(lines))
+
+    if phase_blocks:
+        sections.append("\n\n".join(phase_blocks))
+    else:
+        return ""
+
+    if out.usability_note.strip():
+        sections.append(f"Camera note\n\n{out.usability_note.strip()}")
+
+    return "\n\n".join(sections).strip()
+
+
+def apply_film_first_report(
+    report: CoachingReportSchema,
+    observation: GeminiReportOut,
+    grading: GeminiReportOut,
+) -> CoachingReportSchema:
+    """Replace generic coaching prose with elaborated Call 1 film observations."""
+    has_structured = _observations_have_content(observation)
+    has_call3_evidence = bool(report.advanced_details.evidence_metrics)
+    if not has_structured and not has_call3_evidence:
+        return report
+
+    combined = observation.model_copy(
+        update={
+            "grades": grading.grades,
+            "report_mode": grading.report_mode,
+            "foundational_missing_piece": grading.foundational_missing_piece,
+            "secondary_fix": grading.secondary_fix,
+            "miss_pattern_match": grading.miss_pattern_match,
+            "miss_conflict_note": grading.miss_conflict_note,
+            "confidence": grading.confidence,
+        }
+    )
+    film_evidence = _resolve_film_evidence(combined, report)
+    if not film_evidence:
+        return report
+
+    film_analysis = _film_walkthrough_analysis(combined, report.coach_verdict)
+    if not film_analysis:
+        film_analysis = _film_walkthrough_from_evidence(film_evidence, combined, report.coach_verdict)
+
+    main_fix = _film_priority_main_fix(grading, film_evidence, report.main_fix)
+    secondary_fix = _film_secondary_fix(grading, film_evidence, main_fix)
+
+    adv = report.advanced_details.model_copy(
+        update={
+            "evidence_metrics": _filter_visible_evidence(film_evidence),
+            "diagnostic_checkpoints": _observer_grade_checkpoints(combined)
+            or report.advanced_details.diagnostic_checkpoints,
+            "foundational_missing_piece": main_fix,
+            "secondary_fix": secondary_fix or report.advanced_details.secondary_fix,
+            "root_cause": main_fix,
+            "report_mode": grading.report_mode or report.advanced_details.report_mode,
+            "confidence_score": _clamp_confidence(grading.confidence)
+            if grading.confidence
+            else report.advanced_details.confidence_score,
+        }
+    )
+
+    coach_verdict = report.coach_verdict
+    if coach_verdict:
+        coach_verdict = coach_verdict.model_copy(
+            update={
+                "main_issue": coach_verdict.main_issue or main_fix,
+                "best_fix": coach_verdict.best_fix or main_fix,
+            }
+        )
+
+    updated = report.model_copy(
+        update={
+            "pga_analysis": film_analysis,
+            "main_fix": main_fix,
+            "tips_and_feels": report.tips_and_feels,
+            "advanced_details": adv,
+            "feel_blueprint": None,
+            "coach_verdict": coach_verdict,
+        }
+    )
+    return updated
+
+
+def _film_tips_from_evidence(evidence_lines: list[str], fallback: list[str]) -> list[str]:
+    blob = " ".join(evidence_lines).lower()
+    tips: list[str] = []
+    if any(term in blob for term in ("lead arm", "arm bend", "collapse", "top")):
+        tips.append("Feel width at the top — lead arm long, hands away from the chest.")
+    if any(term in blob for term in ("shoulder", "arms start", "sequenc")):
+        tips.append("Feel the lower body start down before the arms drop.")
+    if any(term in blob for term in ("heel", "posture", "rounded", "c-posture")):
+        tips.append("Feel weight over the middle of your feet, not the heels.")
+    if any(term in blob for term in ("spine", "early extension", "stand up", "impact")):
+        tips.append("Feel your chest staying over the ball through impact.")
+    if len(tips) >= 2:
+        return tips[:4]
+    return tips + [tip for tip in fallback if tip not in tips][:4]
+
+
 def _observer_evidence(out: GeminiReportOut) -> list[str]:
     if not out.observations:
         return []
@@ -1238,17 +1633,76 @@ def _observer_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSche
     )
 
 
+def _gemini_blueprint(out: GeminiReportOut, tips: list[str]) -> KinestheticBlueprint:
+    focus = (out.focus or "Focus").strip()[:40] or "Focus"
+    primary_feel = tips[0] if tips else (out.body_cue or out.main_fix or "")
+    secondary_feel = tips[1] if len(tips) > 1 else (out.space_cue or primary_feel)
+    return KinestheticBlueprint(
+        headline=focus,
+        intro=(out.main_fix or "")[:120],
+        steps=[
+            BlueprintStep(
+                title=focus,
+                step_type="visual_cue",
+                action="",
+                feel=primary_feel,
+            ),
+            BlueprintStep(
+                title="Cue",
+                step_type="visual_cue",
+                action="",
+                feel=secondary_feel,
+            ),
+        ],
+    )
+
+
+def _gemini_roadmap(out: GeminiReportOut) -> AccountabilityPlan:
+    focus = (out.focus or "Practice").strip()[:20] or "Practice"
+    day7 = (out.day7 or out.next_check or "").strip()
+    tip = (out.tips[0] if out.tips else "").strip()
+    drill_name = ""
+    for raw in (out.drill1, out.drill2, out.drill3):
+        parsed = _parse_drill_pipe(raw)
+        if parsed and parsed.name.strip():
+            drill_name = parsed.name.strip()
+            break
+    range_detail = (
+        f"Hit 20 balls at the range using the {drill_name} drill."
+        if drill_name
+        else "Hit 20 half-speed balls with the priority drill feel."
+    )
+    return AccountabilityPlan(
+        weekly_focus=focus,
+        milestones=[
+            MilestoneBlock(
+                days="Days 1-2",
+                title="Shadow reps",
+                detail=tip or "25 film-free shadow reps a day focusing on your one feel.",
+            ),
+            MilestoneBlock(days="Days 3-5", title="Range drill", detail=range_detail),
+            MilestoneBlock(
+                days="Days 6-7",
+                title="Film check",
+                detail=day7 or out.next_check.strip() or "Upload a new video from the same angle.",
+            ),
+        ],
+        day_7_test=day7[:160] or out.next_check.strip()[:160],
+    )
+
+
 def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
     if out.observations is not None:
         return _observer_out_to_coaching_report(out)
 
     mode = out.mode if out.mode in ("development", "maintenance") else "development"
-    checkpoints = [_parse_checkpoint(s) for s in out.checkpoints if s.strip()]
-    missing_section = _extract_section(out.analysis, "The missing piece")
-    change_section = _extract_section(out.analysis, "What changes when you unlock it")
+    checkpoints = _filter_visible_checkpoints(
+        [_parse_checkpoint(s) for s in out.checkpoints if s.strip()]
+    )
     feel_blueprint = _build_feel_blueprint(out)
-    repaired_main_fix = _letter_main_fix(out, out.main_fix or missing_section)
-    analysis_text = out.analysis if _analysis_has_depth(out.analysis) else _gemini_style_analysis(out, out.analysis)
+    tips = [_polish_cue(t) for t in out.tips if t.strip()][:4]
+    analysis_text = out.analysis.strip()
+
     coach_verdict = _build_coach_verdict(
         out,
         strengths=[
@@ -1268,88 +1722,43 @@ def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
         ],
         analysis_text=analysis_text,
     )
-    if coach_verdict and "Quick coach verdict" not in analysis_text and not _analysis_has_depth(out.analysis):
-        verdict_block = _format_verdict_text(coach_verdict)
-        if verdict_block:
-            analysis_text = f"Quick coach verdict\n\n{verdict_block}\n\n{analysis_text}".strip()
-    inferred_root = out.root or out.missing or _cap_words(repaired_main_fix, 18)
-    inferred_missing = out.missing or inferred_root
-    inferred_secondary = out.secondary or ""
-    inferred_chain = out.chain or change_section or _cap_words(out.analysis, 24)
-    evidence = [_cap_words(item, 40) for item in out.evidence[:8]]
-    if mode == "development" and not evidence:
-        evidence = [inferred_root] if inferred_root else ["Visible swing priority identified from the video."]
-
-    tips = _letter_tips(
-        out,
-        [_cap_words(t, 14) for t in out.tips if t.strip()][:3],
-    )
-    if not out.tips and repaired_main_fix and not feel_blueprint:
-        tips = _specific_setup_tips(repaired_main_fix)[:3]
-    if len(tips) < 2:
-        generic_tips = ["Feel smooth through the ball.", "Feel athletic balance through the rep."]
-        tips.extend(generic_tips[: 2 - len(tips)])
 
     drills: list[DrillSummary] = []
     for raw in (out.drill1, out.drill2, out.drill3):
         parsed = _parse_drill_pipe(raw)
         if parsed:
-            drills.append(_repair_drill(parsed))
-    if not drills and feel_blueprint:
-        for fix in feel_blueprint.pro_fixes[:2]:
-            drills.append(
-                _repair_drill(
-                DrillSummary(
-                    name=_cap_words(fix.title, 6) or fix.title,
-                    why_it_helps=_cap_words(fix.detail, 40),
-                    how_to_do_it="15-20 half-speed reps before full swings.",
-                )
-                )
-            )
-    if not drills and mode == "development" and _specific_setup_tips(repaired_main_fix):
-        drills = [_specific_setup_drill()]
-    if not drills and mode == "development":
-        drills = [
-            DrillSummary(
-                name="Half-speed reps",
-                why_it_helps="Builds the new feel without rushing.",
-                how_to_do_it="20 balls at 50% with one cue only.",
-            )
-        ]
+            drills.append(parsed)
 
-    next_check = _cap_words(out.next_check, 18) or "Film one swing face-on."
-    main_fix_cap = 160 if feel_blueprint else 120
+    next_check = out.next_check.strip()
 
-    return apply_rating_calibration(
-        CoachingReportSchema(
-        personalized_greeting=_cap_words(out.greeting, 40) or "Let's unlock your next level.",
-        pga_analysis=_shorten_analysis(analysis_text) or "Analysis pending.",
-        main_fix=_cap_words(repaired_main_fix, main_fix_cap) or "Focus on one athletic feel at the range.",
-        tips_and_feels=[_polish_cue(t) for t in tips if _polish_cue(t)][:4],
+    return CoachingReportSchema(
+        personalized_greeting=out.greeting.strip(),
+        pga_analysis=analysis_text,
+        main_fix=out.main_fix.strip(),
+        tips_and_feels=tips,
         drills=drills[:3],
         next_swing_check=next_check,
         coach_verdict=coach_verdict,
         advanced_details=AdvancedDetails(
             report_mode=mode,  # type: ignore[arg-type]
-            foundational_missing_piece=inferred_missing,
-            profile_constraints_applied=out.profile,
+            foundational_missing_piece=out.missing.strip(),
+            profile_constraints_applied=out.profile.strip(),
             diagnostic_checkpoints=checkpoints,
-            root_cause=inferred_root,
-            symptom=out.symptom or (feel_blueprint.flaws[0].detail if feel_blueprint else ""),
-            evidence_metrics=evidence,
-            secondary_fix=_cap_words(inferred_secondary or (feel_blueprint.flaws[1].title if feel_blueprint and len(feel_blueprint.flaws) > 1 else ""), 48),
+            root_cause=out.root.strip(),
+            symptom=out.symptom.strip(),
+            evidence_metrics=_filter_visible_evidence(
+                [item.strip() for item in out.evidence if item.strip()]
+            )[:8],
+            secondary_fix=out.secondary.strip(),
             optional_fix="",
-            chain_reaction=inferred_chain or (
-                " → ".join(f.title for f in feel_blueprint.flaws) if feel_blueprint else ""
-            ),
-            why_it_caused_the_miss=out.symptom or (feel_blueprint.current_ceiling if feel_blueprint else ""),
+            chain_reaction=out.chain.strip(),
+            why_it_caused_the_miss=out.symptom.strip(),
             confidence_score=_clamp_confidence(out.confidence),
-            next_checkpoint="address",
+            next_checkpoint="",
         ),
         feel_blueprint=feel_blueprint,
-        blueprint=_build_blueprint(out, tips),
-        roadmap=_build_roadmap(out),
+        blueprint=_gemini_blueprint(out, tips),
+        roadmap=_gemini_roadmap(out),
         next_upload_focus=next_check,
         disclaimer="",
-        )
     )

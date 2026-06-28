@@ -99,6 +99,11 @@ def _safe_error(exc: Exception) -> tuple[str, str]:
         return "invalid_video", "We could not read this video. Your credit was restored so you can upload a new clip."
     if "usable golf swing" in text or "non-golf" in text:
         return "unusable_swing", "We could not verify a usable golf swing. Your credit was restored."
+    if "swing on film" in text or "full body in frame" in text or "swing footage" in text:
+        return "invalid_video", str(exc)[:300] if len(str(exc)) < 300 else (
+            "We could not find enough of your swing on film. Film one clean rep with your full body in frame. "
+            "Your credit was restored."
+        )
     return "analysis_unavailable", "We could not complete the analysis. Your credit was restored so you can try again."
 
 
@@ -143,6 +148,47 @@ def _build_request(client, job: dict) -> AnalyzeRequest:
         if profile.get("primary_goal")
         else "",
     ]
+    history_result = (
+        client.table("swing_reports")
+        .select("id,created_at,coaching_content,main_diagnosis,next_upload_focus,swing_mode,status")
+        .eq("user_id", report["user_id"])
+        .eq("swing_mode", report.get("swing_mode") or "full_swing")
+        .eq("status", "ready")
+        .neq("id", report["id"])
+        .order("created_at", desc=True)
+        .limit(3)
+        .execute()
+    )
+    history_lines: list[str] = []
+    for index, prior in enumerate(history_result.data or [], start=1):
+        coaching = prior.get("coaching_content") or {}
+        advanced = coaching.get("advanced_details") if isinstance(coaching, dict) else {}
+        if not isinstance(advanced, dict):
+            advanced = {}
+        drills = coaching.get("drills") if isinstance(coaching, dict) else []
+        drill_names = []
+        if isinstance(drills, list):
+            drill_names = [
+                str(d.get("name", "")) for d in drills if isinstance(d, dict) and d.get("name")
+            ]
+        secondary = advanced.get("secondary_fix") or ""
+        focus = (
+            advanced.get("foundational_missing_piece")
+            or advanced.get("root_cause")
+            or prior.get("next_upload_focus")
+            or prior.get("main_diagnosis")
+            or ""
+        )
+        evidence = advanced.get("evidence_metrics") or []
+        evidence_text = "; ".join(str(item) for item in evidence[:3]) if isinstance(evidence, list) else ""
+        if focus:
+            line = f"Prior swing {index}: main priority: {str(focus)[:180]}."
+            if secondary:
+                line += f" Secondary: {str(secondary)[:120]}."
+            if drill_names:
+                line += f" Drills: {', '.join(drill_names[:2])[:80]}."
+            line += f" Evidence: {evidence_text[:220]}"
+            history_lines.append(line)
 
     return AnalyzeRequest(
         analysis_id=report["id"],
@@ -152,6 +198,7 @@ def _build_request(client, job: dict) -> AnalyzeRequest:
         swing_mode=report.get("swing_mode") or "full_swing",
         player_name=first_name,
         player_context=" ".join(part for part in context_parts if part),
+        history_summary="\n".join(history_lines) or None,
         player_age=profile.get("age"),
         years_playing=profile.get("years_playing"),
         physical_limitations=profile.get("physical_limitations"),

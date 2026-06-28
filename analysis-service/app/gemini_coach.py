@@ -18,7 +18,7 @@ from app.gemini_report_schema import (
     GeminiReportOut,
 )
 from app.report_converter import (
-    apply_rating_calibration,
+    apply_film_first_report,
     gemini_out_to_coaching_report,
     parse_gemini_json,
     coach_verdict_from_analysis,
@@ -28,7 +28,7 @@ from app.trace_log import log_trace
 from app.diagnostic_matrix import diagnostic_matrix_for_prompt
 from app.drill_matching import critique_menu_for_prompt
 from app.mode_coaching import mode_guidance_block
-from app.drill_videos import catalog_for_prompt, enrich_coaching_report
+from app.drill_videos import catalog_for_prompt
 from app.gemini_video import (
     build_keyframe_parts,
     build_phase_evidence_packet,
@@ -79,25 +79,27 @@ Return JSON only:
 }"""
 
 
-_CALL3_USER_FACING_RULES = """USER-FACING COPY RULES (Athletic Upside tone):
-- NEVER output internal grade labels (Optimal, Constraint, etc.) to the user
-- NEVER invent ball flight or misses not visible on film or in locked observations
-- analysis MUST start with a Quick coach verdict block: overall rating (X/10 overall), category ratings,
-  biggest positive, main issue, best fix — then Setup to finish using mode-specific phase labels
-- DEVELOPMENT mode: section titles The missing piece + What changes when you unlock it (plain text, no #)
-- MAINTENANCE mode: section titles What to keep doing + Your ceiling at this level (no "missing piece" section)
-- main_fix must match report_mode from locked evidence (unlock vs keep-owning)
-- Do NOT paste generic full-swing OTT/steep/early-extension story onto chip/putt or elite swings
+_CALL3_USER_FACING_RULES = """USER-FACING COPY RULES — FILM FIRST:
+- Call 1 observations in locked context are the source of truth for what happened on film.
+- Do NOT invent mechanics, ball flight, or fixes not supported by those observations.
+- The server builds the phase-by-phase film walkthrough — do NOT write long analysis prose.
+- Keep analysis to one optional sentence or leave it empty; elaborate in the evidence array instead.
+- Each evidence[] entry must expand one Call 1 phase observation in plain language (club + body + camera limits).
+- main_fix must cite the earliest Constraint phase from locked grades and name what the film showed.
+- secondary_fix must cite a second visible issue from film, not generic golf advice.
 
 RATING CALIBRATION:
 - 2+ Constraint phases OR 3+ Compensating phases → overall rating ≤ 6.5/10
 - Obvious lead arm bend/collapse at top OR poor weight transfer → rating ≤ 6.5/10 even if tempo looks athletic
 - A 7/10+ requires almost all visible checkpoints clean with at most one minor compensation
-- Never rate 7+ when locked grades show arm collapse or weight stuck on trail side
 
 MANDATORY CALL-OUTS (if present in locked Call 2 grades):
-- Lead arm bend/collapse at top MUST appear in flaw2/flaw3, Arm/hand structure in analysis, or secondary_fix
-- Poor weight load/transfer MUST appear in user-facing text even if path is the primary fix"""
+- Lead arm bend/collapse at top MUST appear in flaw2/flaw3 or secondary_fix
+- Poor weight load/transfer MUST appear in user-facing text even if path is the primary fix
+
+DEVELOPMENT vs MAINTENANCE:
+- DEVELOPMENT: main_fix targets foundational_missing_piece from locked grades
+- MAINTENANCE: main_fix preserves what film shows is already working — no invented flaws"""
 
 
 def _build_call3_prompt(
@@ -152,30 +154,21 @@ AVAILABLE DRILLS (use pipe format name|why|how for drill1, drill2, drill3):
 {catalog_for_prompt(swing_mode)}
 
 OUTPUT — Return JSON only matching the coaching schema:
-- greeting: personalized opener using the golfer's name
-- rating: overall rating string e.g. "5.5/10 overall"
-- categories: up to 6 category rating strings e.g. "Setup: 6/10"
-- analysis: full coach read — Quick coach verdict block first, then Setup to finish walkthrough
-- main_fix: one clear priority aligned with locked foundational_missing_piece
-- tips: 2-4 feel cues (array of strings)
-- drill1, drill2, drill3: each "name|why it helps|how to do it"
-- next_check: what to film on the next upload
-- mode: copy locked report_mode (maintenance or development)
-- missing: user-facing label for foundational_missing_piece
-- profile: one line on how physical profile shaped the plan
-- checkpoints: array of "Phase: grade|observation" aligned with locked Call 2 grades (max 14)
-- root, secondary, symptom, chain: diagnosis chain from locked evidence
-- evidence: up to 8 short film-backed evidence strings
-- confidence: 0.0-1.0 from locked grading confidence
-- focus, day7: weekly focus and day-7 test
-- letter_open, letter_headline: coach letter opener
-- strength1, strength2, strength3: specific strengths from film
-- flaw1, flaw2, flaw3: specific flaws from film (include mandatory call-outs if graded)
-- ceiling_now, ceiling_unlock: current ceiling and what unlocks next
-- fix1, fix2, fix3: prioritized fixes
-- body_cue, space_cue: kinesthetic cues
+- greeting: short personalized opener
+- rating, categories: calibrated from locked grades
+- analysis: leave empty or one sentence — phase walkthrough is built from Call 1 on the server
+- main_fix: one priority tied to the earliest Constraint on film (quote what you saw)
+- tips: 2-4 feel cues tied to visible issues only
+- drill1, drill2, drill3: each "name|why|how" matched to main_fix
+- next_check: camera angle that would clarify the biggest not_visible phase
+- mode: copy locked report_mode
+- missing, root, secondary, symptom, chain: from locked grading only
+- evidence: 5-8 strings — each elaborates one Call 1 phase (Setup through Finish) in plain language
+- checkpoints: "Phase: grade|observation" aligned with Call 2
+- letter_open, strengths, flaws, fixes: keep brief and film-specific; skip generic coach letter filler
+- confidence: from locked grading
 
-Do NOT return observation-only JSON. Write the full coaching report."""
+Do NOT write generic coaching essays. If it is not on film, do not say it."""
 
 
 def _build_prompt(
@@ -304,7 +297,6 @@ def _audit_with_revisions(
 
     for revision in range(max_revisions + 1):
         report = _apply_phase_limitations(report, phase_map)
-        report = _dynamic_priority_guard(report)
         try:
             audit_report_quality(
                 report,
@@ -313,31 +305,6 @@ def _audit_with_revisions(
                 history_summary=history_summary,
                 phase_map=phase_map,
             )
-            # Narrative pass (Call 4) — text-only enhancement using same context parts.
-            try:
-                narrative_report = _call_narrative_gemini(
-                    client,
-                    model,
-                    content_parts,
-                    report,
-                    trace_id=trace_id,
-                    report_id=report_id,
-                    user_id=user_id,
-                    raw_attempts=raw_attempts,
-                )
-                narrative_report = _apply_phase_limitations(narrative_report, phase_map)
-                audit_report_quality(
-                    narrative_report,
-                    swing_mode=swing_mode,
-                    player_context=player_context,
-                    history_summary=history_summary,
-                    phase_map=phase_map,
-                )
-                return narrative_report
-            except Exception as exc:
-                logger.warning("Gemini narrative pass failed; using structured report: %s", exc)
-                if raw_attempts is not None:
-                    raw_attempts.append({"kind": "narrative_error", "model": model, "error": str(exc)[:500]})
             return report
         except ReportQualityError as quality_error:
             if revision >= max_revisions:
@@ -493,7 +460,7 @@ def _fallback_report(
         next_upload_focus=next_check,
         disclaimer=DISCLAIMER,
     )
-    return enrich_coaching_report(report, swing_mode)
+    return _normalize_report(report)
 
 
 def _normalize_report(report: CoachingReportSchema) -> CoachingReportSchema:
@@ -604,7 +571,7 @@ def _apply_narrative_response(
             existing=report.coach_verdict,
         ),
     }
-    return _normalize_report(apply_rating_calibration(report.model_copy(update=updates)))
+    return _normalize_report(report.model_copy(update=updates))
 
 
 _SETUP_PRIMARY_TERMS = (
@@ -1120,7 +1087,7 @@ def _apply_diagnostic_report(
     updated = gemini_out_to_coaching_report(GeminiReportOut.model_validate(combined))
     if not updated.disclaimer:
         updated.disclaimer = DISCLAIMER
-    return enrich_coaching_report(_normalize_report(updated), swing_mode)
+    return _normalize_report(updated)
 
 
 def _preserve_preanalyzed_diagnosis(
@@ -1204,7 +1171,6 @@ def _call_gemini(
         if not report.disclaimer:
             report.disclaimer = DISCLAIMER
         report = _normalize_report(report)
-        enriched = enrich_coaching_report(report, swing_mode)
         log_trace(
             "gemini_response_received",
             trace_id=trace_id,
@@ -1213,7 +1179,7 @@ def _call_gemini(
             status="ok",
             model=model,
         )
-        return enriched
+        return report
     except Exception as exc:
         log_trace(
             "gemini_response_received",
@@ -1385,6 +1351,7 @@ def generate_coaching_report(
                     user_id=user_id,
                     raw_attempts=meta["raw_responses"],
                 )
+                report = apply_film_first_report(report, observation, grading)
                 meta["model_used"] = model
                 return report, True, meta
             except ReportQualityError as exc:

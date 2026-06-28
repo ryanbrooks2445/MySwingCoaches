@@ -3,7 +3,7 @@ import { CheckCircle2, Lock, RotateCcw, Video } from "lucide-react";
 import { PublicHeader } from "@/components/PublicHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PRICE_FIRST_ANALYSIS_DISPLAY, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+import { PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
 
 const deliverables = [
   "One swing priority, not a list of ten fixes",
@@ -35,7 +35,7 @@ export default function LandingPage() {
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-[var(--color-muted)]">
               Get one priority, evidence from your video, a feel, a drill, and a clear next-upload
-              goal. First analysis {PRICE_FIRST_ANALYSIS_DISPLAY}; then {PRICE_PER_ANALYSIS_DISPLAY}.
+              goal. {PRICE_PER_ANALYSIS_DISPLAY} per swing analysis.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link href="/signup">
@@ -152,7 +152,7 @@ export default function LandingPage() {
         <section className="mx-auto max-w-6xl px-4 py-16 text-center">
           <h2 className="text-3xl font-semibold">Give your next range session one clear purpose.</h2>
           <Link href="/signup" className="mt-6 inline-block">
-            <Button size="lg">Get my first analysis — {PRICE_FIRST_ANALYSIS_DISPLAY}</Button>
+            <Button size="lg">Get my analysis — {PRICE_PER_ANALYSIS_DISPLAY}</Button>
           </Link>
         </section>
       </main>

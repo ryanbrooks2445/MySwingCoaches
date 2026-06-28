@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import mimetypes
 import time
@@ -9,6 +10,8 @@ import cv2
 import numpy as np
 from google import genai
 from google.genai import types
+
+from app.phase_detector import PhaseDetectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +68,28 @@ def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = 90) -> bytes:
     return encoded.tobytes()
 
 
+def build_phase_evidence_packet(
+    phase_result: PhaseDetectionResult,
+    swing_window: dict | None = None,
+) -> str:
+    payload = {
+        "swing_window": swing_window or {},
+        "phases": phase_result.phase_map,
+        "limitations": phase_result.limitation_notes(),
+        "rules": [
+            "Only grade setup from address/takeaway when person_visible and confidence >= 0.4.",
+            "Only grade path/sequencing from downswing/impact when person_visible and confidence >= 0.4.",
+            "Only grade finish/balance from early_follow_through/finish when person_visible and confidence >= 0.4.",
+            "If impact phase is impact_window_estimate or confidence < 0.5, include limitation language and avoid precise impact claims.",
+            "Mark checkpoints not_visible when person_visible is false for that phase.",
+        ],
+    }
+    return json.dumps(payload, indent=2)
+
+
 def build_keyframe_parts(
     frames: list[np.ndarray],
-    keyframe_indices: dict[str, int],
+    phase_result: PhaseDetectionResult,
     swing_mode: str = "full_swing",
 ) -> list[types.Part]:
     motion_label = {"full_swing": "swing", "chipping": "chip", "putting": "putting stroke"}.get(
@@ -75,18 +97,36 @@ def build_keyframe_parts(
     )
     parts: list[types.Part] = []
     total = len(frames)
-    for phase, idx in keyframe_indices.items():
+
+    for phase_frame in phase_result.phases:
+        idx = phase_frame.frame_index
         if idx < 0 or idx >= total:
             continue
+        if not phase_frame.person_visible and phase_frame.confidence < 0.4:
+            parts.append(
+                types.Part.from_text(
+                    text=(
+                        f"Phase '{phase_frame.phase.replace('_', ' ')}' — NOT USABLE "
+                        f"(person not visible, confidence {phase_frame.confidence:.2f}). "
+                        "Do not claim observations for this phase."
+                    )
+                )
+            )
+            continue
+
         pct = int((idx / max(total - 1, 1)) * 100)
-        jpeg = frame_to_jpeg_bytes(frames[idx])
+        label = phase_frame.phase.replace("_", " ")
+        notes = f" Notes: {phase_frame.notes}" if phase_frame.notes else ""
         parts.append(
             types.Part.from_text(
                 text=(
-                    f"Reference still — roughly {pct}% through the {motion_label} "
-                    f"(evenly sampled; label '{phase.replace('_', ' ')}' is approximate)"
+                    f"Verified still — {pct}% through the {motion_label}. "
+                    f"Phase: {label}. Confidence: {phase_frame.confidence:.2f}. "
+                    f"Person visible: {phase_frame.person_visible}.{notes}"
                 )
             )
         )
+        jpeg = frame_to_jpeg_bytes(frames[idx])
         parts.append(types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"))
+
     return parts

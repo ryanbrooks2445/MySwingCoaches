@@ -11,6 +11,33 @@ function clientIp(request: NextRequest): string {
   );
 }
 
+function enforceMemoryRateLimit(
+  key: string,
+  limit: number,
+  windowSeconds: number
+): NextResponse | null {
+  const now = Date.now();
+  const current = memoryWindows.get(key);
+  if (!current || current.resetAt <= now) {
+    memoryWindows.set(key, {
+      count: 1,
+      resetAt: now + windowSeconds * 1000,
+    });
+    return null;
+  }
+
+  current.count += 1;
+  if (current.count <= limit) return null;
+
+  return NextResponse.json(
+    { error: "Too many requests. Please wait and try again." },
+    {
+      status: 429,
+      headers: { "Retry-After": String(Math.ceil((current.resetAt - now) / 1000)) },
+    }
+  );
+}
+
 export async function enforceRateLimit(
   request: NextRequest,
   options: {
@@ -55,33 +82,9 @@ export async function enforceRateLimit(
     } catch {
       console.warn("rate_limit_provider_unreachable", { scope: options.scope });
     }
+  } else {
+    console.warn("rate_limit_upstash_not_configured", { scope: options.scope });
   }
 
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Rate limiting is temporarily unavailable. Please try again shortly." },
-      { status: 503, headers: { "Retry-After": "60" } }
-    );
-  }
-
-  const now = Date.now();
-  const current = memoryWindows.get(key);
-  if (!current || current.resetAt <= now) {
-    memoryWindows.set(key, {
-      count: 1,
-      resetAt: now + options.windowSeconds * 1000,
-    });
-    return null;
-  }
-
-  current.count += 1;
-  if (current.count <= options.limit) return null;
-
-  return NextResponse.json(
-    { error: "Too many requests. Please wait and try again." },
-    {
-      status: 429,
-      headers: { "Retry-After": String(Math.ceil((current.resetAt - now) / 1000)) },
-    }
-  );
+  return enforceMemoryRateLimit(key, options.limit, options.windowSeconds);
 }

@@ -112,11 +112,11 @@ test("login and signup run through rate-limited server routes", async () => {
   assert.match(signupPage, /fetch\("\/api\/auth\/signup"/);
 });
 
-test("production rate limiting fails closed when Upstash is unavailable", async () => {
+test("production rate limiting falls back to memory when Upstash is unavailable", async () => {
   const limiter = await readFile(new URL("../src/lib/rate-limit.ts", import.meta.url), "utf8");
 
-  assert.match(limiter, /process\.env\.NODE_ENV === "production"/);
-  assert.match(limiter, /Rate limiting is temporarily unavailable/);
+  assert.match(limiter, /enforceMemoryRateLimit/);
+  assert.doesNotMatch(limiter, /Rate limiting is temporarily unavailable/);
 });
 
 test("all private functions revoke inherited public execution", async () => {

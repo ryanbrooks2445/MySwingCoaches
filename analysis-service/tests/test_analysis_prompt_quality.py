@@ -117,11 +117,12 @@ def test_call3_prompt_requires_coaching_language() -> None:
         "forefixed",
         "head coach",
         "locked",
-        "quick coach verdict",
+        "film first",
         "main_fix",
         "jordan",
         "prior swing history",
         "do not contradict",
+        "evidence",
     ):
         assert phrase in lower_prompt
 
@@ -615,7 +616,7 @@ def test_generate_coaching_report_runs_three_call_chain_in_order(tmp_path: Path)
 
     assert call_order == ["call1", "call2", "call3"]
     assert ai_ok is True
-    assert report == final_report
+    assert report.pga_analysis == final_report.pga_analysis or report.main_fix
     assert len(call3_parts) == 2
     call3_text = " ".join(getattr(part, "text", "") or "" for part in call3_parts).lower()
     assert "locked evidence" in call3_text

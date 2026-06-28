@@ -326,9 +326,9 @@ export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
 };
 
 export {
-  PRICE_PER_SWING_UPLOAD,
-  PRICE_PER_SWING_UPLOAD_CENTS,
-  PRICE_PER_SWING_UPLOAD_DISPLAY,
+  PRICE_PER_ANALYSIS,
+  PRICE_PER_ANALYSIS_DISPLAY,
+  PRICE_PER_ANALYSIS_CENTS,
   getNextAnalysisPrice,
   getNextAnalysisPriceDisplay,
 } from "@/lib/pricing";

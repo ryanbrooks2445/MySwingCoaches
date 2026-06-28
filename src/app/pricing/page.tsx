@@ -9,22 +9,13 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/client";
-import {
-  PRICE_FIRST_ANALYSIS_DISPLAY,
-  PRICE_PER_ANALYSIS_DISPLAY,
-  SWING_MODE_LABELS,
-  SWING_MODES,
-  getNextAnalysisPriceDisplay,
-  qualifiesForIntroPrice,
-} from "@/lib/pricing";
+import { PRICE_PER_ANALYSIS_DISPLAY, SWING_MODE_LABELS, SWING_MODES } from "@/lib/pricing";
 
 function PricingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [nextPrice, setNextPrice] = useState(PRICE_FIRST_ANALYSIS_DISPLAY);
-  const [introEligible, setIntroEligible] = useState(false);
   const [creditsReady, setCreditsReady] = useState<number | null>(null);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
@@ -35,8 +26,6 @@ function PricingContent() {
     } = await supabase.auth.getUser();
     if (!user) {
       setSignedIn(false);
-      setNextPrice(PRICE_FIRST_ANALYSIS_DISPLAY);
-      setIntroEligible(true);
       setCreditsReady(null);
       return null;
     }
@@ -47,15 +36,11 @@ function PricingContent() {
       .eq("user_id", user.id)
       .single();
     if (!sub) {
-      setNextPrice(PRICE_FIRST_ANALYSIS_DISPLAY);
-      setIntroEligible(true);
       setCreditsReady(null);
       return null;
     }
     const used = sub.analyses_used ?? 0;
     const limit = sub.analyses_limit ?? 0;
-    setNextPrice(getNextAnalysisPriceDisplay(used, limit));
-    setIntroEligible(qualifiesForIntroPrice(used, limit));
     const available = Math.max(0, limit - used);
     setCreditsReady(available);
     return available;
@@ -152,19 +137,8 @@ function PricingContent() {
 
         <Card className="mt-10 text-center">
           <h2 className="text-xl font-semibold">One AI coaching blueprint</h2>
-          {introEligible ? (
-            <>
-              <p className="mt-4 text-5xl font-semibold">{PRICE_FIRST_ANALYSIS_DISPLAY}</p>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">
-                your first swing · then {PRICE_PER_ANALYSIS_DISPLAY} each
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="mt-4 text-5xl font-semibold">{nextPrice}</p>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">per video upload</p>
-            </>
-          )}
+          <p className="mt-4 text-5xl font-semibold">{PRICE_PER_ANALYSIS_DISPLAY}</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">per video upload</p>
           <ul className="mx-auto mt-8 max-w-sm space-y-2 text-left text-sm text-[var(--color-muted)]">
             <li>• Full swing, chipping, or putting — same price</li>
             <li>• Short diagnostic + feels + 7-day plan</li>
@@ -177,7 +151,7 @@ function PricingContent() {
             disabled={loading}
             onClick={purchaseAnalysis}
           >
-            {loading ? "Redirecting to checkout..." : `Buy 1 analysis — ${nextPrice}`}
+            {loading ? "Redirecting to checkout..." : `Buy 1 analysis — ${PRICE_PER_ANALYSIS_DISPLAY}`}
           </Button>
           <Link href="/upload" className="mt-4 block text-sm text-[var(--color-accent)] hover:underline">
             Go to upload →
@@ -189,12 +163,6 @@ function PricingContent() {
             <Link href="/refund-policy" className="underline">Refund Policy</Link>.
           </p>
         </Card>
-
-        {!introEligible && (
-          <p className="mt-6 text-center text-sm text-[var(--color-muted)]">
-            Intro pricing ({PRICE_FIRST_ANALYSIS_DISPLAY} first swing) is one-time per account.
-          </p>
-        )}
 
         <Card className="mt-8">
           <h2 className="text-lg font-semibold">Modes</h2>
@@ -221,16 +189,7 @@ function PricingContent() {
 
 export default function PricingPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen">
-          <AppNav />
-          <main className="mx-auto max-w-2xl px-4 py-8 text-center text-[var(--color-muted)]">
-            Loading pricing...
-          </main>
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="min-h-screen" />}>
       <PricingContent />
     </Suspense>
   );
