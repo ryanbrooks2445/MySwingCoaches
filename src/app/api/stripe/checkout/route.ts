@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { PRICE_PER_ANALYSIS_CENTS } from "@/lib/pricing";
-import { appUrl, getStripe, isStripeConfigured } from "@/lib/stripe";
+import {
+  appUrl,
+  checkoutDisplayName,
+  checkoutStatementDescriptor,
+  getStripe,
+  isStripeConfigured,
+} from "@/lib/stripe";
 import { enforceRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
@@ -60,6 +66,9 @@ export async function POST(request: NextRequest) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,
+    branding_settings: {
+      display_name: checkoutDisplayName(),
+    },
     line_items: [
       {
         quantity: 1,
@@ -73,6 +82,9 @@ export async function POST(request: NextRequest) {
         },
       },
     ],
+    payment_intent_data: {
+      statement_descriptor: checkoutStatementDescriptor(),
+    },
     metadata: {
       user_id: user.id,
       product: "swing_upload",

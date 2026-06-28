@@ -25,3 +25,15 @@ export function appUrl(): string {
   }
   return "http://localhost:3000";
 }
+
+/** Shown at the top of Stripe Checkout (overrides the Stripe account business name). */
+export function checkoutDisplayName(): string {
+  return process.env.STRIPE_CHECKOUT_DISPLAY_NAME?.trim() || "MySwingCoaches";
+}
+
+/** Appears on the customer's card/bank statement (max 22 chars, letters required). */
+export function checkoutStatementDescriptor(): string {
+  const configured = process.env.STRIPE_CHECKOUT_STATEMENT_DESCRIPTOR?.trim();
+  if (configured) return configured.slice(0, 22);
+  return "MYSWINGCOACHES";
+}
