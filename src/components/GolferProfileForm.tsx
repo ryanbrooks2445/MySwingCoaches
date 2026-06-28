@@ -37,16 +37,20 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
         if (!res.ok) throw new Error(data.error || "Failed to load profile");
         const p = data.profile;
         if (!p) throw new Error("Could not load profile");
-        if (p.age != null) setAge(String(p.age));
-        if (p.years_playing != null) setYearsPlaying(String(p.years_playing));
-        if (p.average_9_score != null) setAverage9Score(String(p.average_9_score));
-        if (p.typical_miss) setTypicalMiss(p.typical_miss);
-        if (p.primary_goal) setPrimaryGoal(p.primary_goal);
+        setAge((current) => current || (p.age == null ? "" : String(p.age)));
+        setYearsPlaying((current) =>
+          current || (p.years_playing == null ? "" : String(p.years_playing))
+        );
+        setAverage9Score((current) =>
+          current || (p.average_9_score == null ? "" : String(p.average_9_score))
+        );
+        setTypicalMiss((current) => current || p.typical_miss || "");
+        setPrimaryGoal((current) => current || p.primary_goal || "");
         if (p.physical_limitations === "None reported") {
           setNoLimitations(true);
           setLimitations("");
         } else if (p.physical_limitations) {
-          setLimitations(p.physical_limitations);
+          setLimitations((current) => current || p.physical_limitations || "");
         }
         const isComplete = Boolean(data.complete);
         setComplete(isComplete);
@@ -106,14 +110,6 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
     primary_goal: primaryGoal,
   });
 
-  if (loading) {
-    return (
-      <Card className={cn("animate-pulse", className)}>
-        <div className="h-32 rounded-lg bg-[var(--color-border)]/40" />
-      </Card>
-    );
-  }
-
   return (
     <Card className={cn("border-[var(--color-accent)]/25", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -123,7 +119,9 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
           </p>
           <h2 className="mt-1 text-lg font-semibold">Your golfer profile</h2>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
-            We tailor drills and feels to your age, experience, and body — pain-free coaching only.
+            {loading
+              ? "Loading your saved profile…"
+              : "We tailor drills and feels to your age, experience, and body — pain-free coaching only."}
           </p>
         </div>
         {complete && saved && (
@@ -147,7 +145,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
                 setAge(e.target.value);
                 setSaved(false);
               }}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm text-[var(--color-foreground)] outline-none focus:border-[var(--color-accent)]"
               placeholder="e.g. 52"
             />
           </label>
@@ -163,7 +161,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
                 setYearsPlaying(e.target.value);
                 setSaved(false);
               }}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm text-[var(--color-foreground)] outline-none focus:border-[var(--color-accent)]"
               placeholder="e.g. 25"
             />
           </label>
@@ -182,7 +180,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
                 setAverage9Score(e.target.value);
                 setSaved(false);
               }}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm text-[var(--color-foreground)] outline-none focus:border-[var(--color-accent)]"
               placeholder="e.g. 58"
             />
           </label>
@@ -197,7 +195,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
                 setTypicalMiss(e.target.value);
                 setSaved(false);
               }}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm text-[var(--color-foreground)] outline-none focus:border-[var(--color-accent)]"
               placeholder="e.g. tops, slices, chunks"
             />
           </label>
@@ -213,7 +211,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
               setPrimaryGoal(e.target.value);
               setSaved(false);
             }}
-            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)]"
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm text-[var(--color-foreground)] outline-none focus:border-[var(--color-accent)]"
             placeholder="e.g. make better contact and break 50"
           />
         </label>
@@ -232,7 +230,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
               setLimitations(e.target.value);
               setSaved(false);
             }}
-            className="mt-2 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--color-accent)] disabled:opacity-50"
+            className="mt-2 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2.5 text-sm text-[var(--color-foreground)] outline-none focus:border-[var(--color-accent)] disabled:opacity-50"
             placeholder="e.g. Lower back pain — avoid aggressive rotation"
           />
           <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
@@ -253,7 +251,7 @@ export function GolferProfileForm({ onCompleteChange, className }: GolferProfile
 
         <Button
           type="submit"
-          disabled={saving || !draftComplete}
+          disabled={saving || loading || !draftComplete}
           className="w-full sm:w-auto"
           size="lg"
         >

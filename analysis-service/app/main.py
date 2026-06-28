@@ -25,7 +25,7 @@ if settings.sentry_dsn:
         logger.warning("SENTRY_DSN is configured but sentry-sdk is not installed")
 
 app = FastAPI(
-    title="MySwingCoaches Analysis Service",
+    title="ForeFixed Analysis Service",
     description="OpenCV frame extraction + Gemini video coaching pipeline",
     version="0.1.0",
 )

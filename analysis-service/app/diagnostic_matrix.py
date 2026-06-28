@@ -13,6 +13,33 @@ from app.schemas import SwingMode
 # Internal grades only — never show numeric scores to users.
 GRADE_LABELS = "Optimal | Compensation | Constraint | Not_visible"
 
+REFERENCE_STANDARD_FULL_SWING = """REFERENCE STANDARD — what "Optimal" / 10-out-of-10 means on our rubric
+(There is NO single reference video or tour-pro clip. Gemini grades each phase against this mechanical intent.)
+
+SETUP — Optimal: athletic mid-foot pressure, hip hinge (not chair-squat on heels), stable stance width, arms hang naturally.
+
+TAKEAWAY — Optimal: club, hands, and chest move together; no early wrist roll that shuts the face; arms stay in front of the body.
+
+TOP OF BACKSWING — Optimal:
+- Lead arm mostly extended with useful width (not collapsed across the chest)
+- Hands have space away from the chest; club not sucked excessively inside
+- Shoulder turn loads the backswing; hips turn (not just lateral sway)
+- Weight / pressure loads into the trail side — not 50/50 or stuck on the lead foot going back
+
+TRANSITION — Optimal: lower body starts down while arms shallow/drop; no snatch from the top; chest stays over the ball.
+
+DOWNSWING / IMPACT — Optimal: path and face work together; hips clear; shaft lean at impact; low point ahead of the ball.
+
+WEIGHT TRANSFER — Optimal:
+- Backswing loads trail side; downswing shifts pressure to lead side through impact
+- NOT hanging back on the trail foot, NOT reverse-pivoting, NOT stuck with weight on the trail side at the ball
+
+FINISH — Optimal: full rotation, balance on lead side, chest facing target.
+
+USER-FACING 10/10 RATING maps to maintenance mode: almost all visible checkpoints Optimal, at most one minor Compensation,
+no Constraint chain. A 7/10 is NOT "good enough" — it means one major leak with several compensations still in play.
+Athletic speed, a balanced finish, or good tempo do NOT earn high marks if arm structure, weight shift, or contact chain is broken."""
+
 PILLAR_1_HUMAN = """PILLAR 1 — THE HUMAN BLUEPRINT (intake profile — apply BEFORE video)
 - T-spine mobility: can the chest rotate or is it locked (forces arm lift)?
 - Hip internal/external rotation: tight hips → lateral sway vs clean rotation
@@ -136,6 +163,8 @@ def diagnostic_matrix_for_prompt(swing_mode: SwingMode = "full_swing") -> str:
         tempo = PILLAR_4_TEMPO
 
     return f"""{_diagnostic_workflow(swing_mode)}
+
+{REFERENCE_STANDARD_FULL_SWING if swing_mode == "full_swing" else ""}
 
 MASTER COVERAGE MAP (grade internally; do not dump this list to the user):
 

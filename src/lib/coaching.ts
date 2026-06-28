@@ -1,10 +1,16 @@
 import type {
   CoachingContent,
   FeelBlueprintDiagnostic,
+  PhaseFrame,
   SimplifiedSwingReport,
   SwingDiagnosisEngine,
   SwingReport,
 } from "@/lib/types";
+import { parseCoachVerdictFromAnalysis, resolveCoachVerdict } from "@/lib/coach-verdict";
+import {
+  filterVisibleCheckpoints,
+  filterVisibleEvidence,
+} from "@/lib/report-display";
 
 function hasSimplifiedReport(content: CoachingContent): boolean {
   return Boolean(content.pga_analysis?.trim() && content.main_fix?.trim());
@@ -20,6 +26,28 @@ function hasLegacyDiagnostic(content: CoachingContent): boolean {
 
 function hasDiagnosisEngine(content: CoachingContent): boolean {
   return Boolean(content.diagnosis_engine?.main_diagnosis);
+}
+
+function scrubAdvancedDetails(
+  details: NonNullable<CoachingContent["advanced_details"]>,
+  phaseMap?: PhaseFrame[]
+): NonNullable<CoachingContent["advanced_details"]> {
+  const stripPhaseCheckpoints =
+    phaseMap !== undefined && filterPhaseMap(phaseMap).length === 0;
+  return {
+    ...details,
+    evidence_metrics: filterVisibleEvidence(details.evidence_metrics ?? []),
+    diagnostic_checkpoints: stripPhaseCheckpoints
+      ? []
+      : filterVisibleCheckpoints(details.diagnostic_checkpoints),
+  };
+}
+
+function filterPhaseMap(phaseMap: PhaseFrame[] | undefined): PhaseFrame[] {
+  if (!phaseMap?.length) return [];
+  return phaseMap.filter(
+    (phase) => phase.person_visible !== false && (phase.confidence ?? 0) >= 0.35
+  );
 }
 
 /** Parse coaching JSON from report. */
@@ -134,36 +162,59 @@ function feelBlueprintToSimplified(content: CoachingContent, fb: FeelBlueprintDi
   };
 }
 
-export function getSimplifiedReport(content: CoachingContent): SimplifiedSwingReport {
+export function getSimplifiedReport(
+  content: CoachingContent,
+  phaseMap?: PhaseFrame[]
+): SimplifiedSwingReport {
   if (hasSimplifiedReport(content)) {
-    return {
+    const simplified: SimplifiedSwingReport = {
       pga_analysis: content.pga_analysis!,
       main_fix: content.main_fix!,
       tips_and_feels: content.tips_and_feels ?? [],
       drills: content.drills ?? [],
-      practice_plan: content.roadmap?.milestones?.map(
-        (milestone) => `${milestone.days}: ${milestone.detail}`
-      ),
+      practice_plan: content.roadmap?.milestones?.map((milestone) => {
+        const days = milestone.days.trim();
+        const detail = milestone.detail.trim();
+        return days.endsWith(":") ? `${days} ${detail}` : `${days}: ${detail}`;
+      }),
       next_swing_check: content.next_swing_check ?? content.next_upload_focus,
-      advanced_details: content.advanced_details ?? {
-        report_mode: "development",
-        foundational_missing_piece: "",
-        root_cause: "",
-        symptom: "",
-        evidence_metrics: [],
-        secondary_fix: "",
-        optional_fix: "",
-        chain_reaction: "",
-        why_it_caused_the_miss: "",
-        confidence_score: 0,
-      },
+      advanced_details: scrubAdvancedDetails(
+        content.advanced_details ?? {
+          report_mode: "development",
+          foundational_missing_piece: "",
+          root_cause: "",
+          symptom: "",
+          evidence_metrics: [],
+          secondary_fix: "",
+          optional_fix: "",
+          chain_reaction: "",
+          why_it_caused_the_miss: "",
+          confidence_score: 0,
+        },
+        phaseMap
+      ),
+      coach_verdict:
+        resolveCoachVerdict(content, {
+          pga_analysis: content.pga_analysis,
+          main_fix: content.main_fix,
+        }) ?? undefined,
     };
+    return simplified;
   }
   if (content.diagnosis_engine) {
     return diagnosisToSimplified(content.diagnosis_engine, content);
   }
   if (content.feel_blueprint && hasNewFeelBlueprint(content)) {
-    return feelBlueprintToSimplified(content, content.feel_blueprint);
+    const simplified = feelBlueprintToSimplified(content, content.feel_blueprint);
+    simplified.coach_verdict =
+      resolveCoachVerdict(content, simplified) ??
+      parseCoachVerdictFromAnalysis(simplified.pga_analysis, {
+        biggest_positive: content.feel_blueprint.strengths[0]?.detail,
+        main_issue: content.feel_blueprint.flaws[0]?.detail,
+        best_fix: content.feel_blueprint.pro_fixes[0]?.detail,
+      }) ??
+      undefined;
+    return simplified;
   }
   if (content.diagnostic && content.blueprint) {
     const d = content.diagnostic;
@@ -211,6 +262,10 @@ export function getSimplifiedReport(content: CoachingContent): SimplifiedSwingRe
 /** @deprecated Use getSimplifiedReport */
 export function getFeelBlueprint(content: CoachingContent): FeelBlueprintDiagnostic | null {
   return content.feel_blueprint ?? null;
+}
+
+export function getVisiblePhaseMap(phaseMap: PhaseFrame[] | undefined): PhaseFrame[] {
+  return filterPhaseMap(phaseMap);
 }
 
 export function getReportFocusLabel(report: SwingReport): string | null {

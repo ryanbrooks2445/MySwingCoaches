@@ -1,7 +1,10 @@
-export const PRICE_FIRST_ANALYSIS = 9.99;
 export const PRICE_PER_ANALYSIS = 19.99;
-export const PRICE_FIRST_ANALYSIS_DISPLAY = "$9.99";
 export const PRICE_PER_ANALYSIS_DISPLAY = "$19.99";
+export const PRICE_PER_ANALYSIS_CENTS = 1999;
+
+/** @deprecated Use PRICE_PER_ANALYSIS — kept for existing imports */
+export const PRICE_FIRST_ANALYSIS = PRICE_PER_ANALYSIS;
+export const PRICE_FIRST_ANALYSIS_DISPLAY = PRICE_PER_ANALYSIS_DISPLAY;
 
 export const SWING_MODES = ["full_swing", "chipping", "putting"] as const;
 export type SwingMode = (typeof SWING_MODES)[number];
@@ -18,21 +21,20 @@ export const SWING_MODE_HINTS: Record<SwingMode, string> = {
   putting: "Down-the-line or face-on. Ball, putter, and stroke in frame.",
 };
 
-/** Intro price only before any purchase or completed analysis. */
-export function qualifiesForIntroPrice(analysesUsed: number, analysesLimit: number): boolean {
-  return analysesUsed === 0 && analysesLimit === 0;
-}
-
-export function getNextAnalysisPrice(analysesUsed: number, analysesLimit: number): number {
-  return qualifiesForIntroPrice(analysesUsed, analysesLimit)
-    ? PRICE_FIRST_ANALYSIS
-    : PRICE_PER_ANALYSIS;
+export function getNextAnalysisPrice(
+  _analysesUsed?: number,
+  _analysesLimit?: number
+): number {
+  return PRICE_PER_ANALYSIS;
 }
 
 export function formatPrice(amount: number): string {
   return `$${amount.toFixed(2)}`;
 }
 
-export function getNextAnalysisPriceDisplay(analysesUsed: number, analysesLimit: number): string {
+export function getNextAnalysisPriceDisplay(
+  analysesUsed?: number,
+  analysesLimit?: number
+): string {
   return formatPrice(getNextAnalysisPrice(analysesUsed, analysesLimit));
 }

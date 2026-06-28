@@ -32,7 +32,7 @@ CHECKPOINT_VOCABULARY: dict[SwingMode, str] = {
     ),
 }
 
-PILLAR_2_FULL = """PILLAR 2 — THE STATIC LAUNCHPAD (setup — ALWAYS grade before takeaway; highest priority)
+PILLAR_2_FULL = """PILLAR 2 — THE STATIC LAUNCHPAD (setup — grade before motion; not automatically highest priority)
 
 GROUND-UP SETUP CHECK (mandatory first on film):
 - Weight distribution: heels-heavy / chair-squat vs balanced on balls of feet / mid-foot
@@ -41,7 +41,9 @@ GROUND-UP SETUP CHECK (mandatory first on film):
 - Ball position, grip, alignment — only after the three checks above
 
 If heels or poor hinge at address → expect downstream lunge, early extension, or steep compensations.
-Name that cause-and-effect link explicitly in user-facing copy."""
+Name that cause-and-effect link explicitly only when setup evidence is the strongest root cause.
+If path, clubface, arm structure, head movement, sequencing, rotation, weight shift, or impact is more decisive,
+make that the primary priority and keep setup as secondary/hidden context."""
 
 PILLAR_2_CHIPPING = """PILLAR 2 — SHORT GAME SETUP (chip — highest priority)
 - Stance: narrow, feet slightly open, weight 60–70% on lead foot
@@ -110,11 +112,13 @@ E) Follow-through & stability
 
 PRIORITIZATION_BY_MODE: dict[SwingMode, str] = {
     "full_swing": (
-        "CHRONOLOGICAL RULE: Grade Setup (feet/heels/stance/hinge) BEFORE takeaway or downswing.\n"
-        "Walk backward: Setup → Backswing → Transition → Downswing → Impact → Finish.\n"
-        "foundational_missing_piece = earliest Constraint — almost always setup if feet/posture are broken.\n"
-        "If heels-heavy or poor hinge at address, write cause-and-effect: setup error CAUSED the downswing lunge/path.\n"
-        "80% of tips_and_feels + drills must target feet/posture when setup is the root — no path drills yet."
+        "EVIDENCE-WEIGHTED RULE: Grade Setup first, then grade the whole swing before choosing the priority.\n"
+        "Compare: setup/posture, grip, takeaway, swing path, clubface, head movement, arm structure, rotation, "
+        "sequencing, weight shift, impact position.\n"
+        "foundational_missing_piece = the issue with strongest visible evidence + biggest effect on contact/direction, "
+        "not automatically the earliest imperfection.\n"
+        "Posture/setup can be primary only when it clearly drives the miss. If not, choose the better-supported "
+        "path/face/sequence/arm/head/impact priority."
     ),
     "chipping": (
         "Walk backward: Setup & landing intent → Backswing length → Hinge & low point → "

@@ -11,7 +11,7 @@ ALTER TABLE swing_reports
 CREATE INDEX IF NOT EXISTS idx_swing_videos_swing_mode ON swing_videos(swing_mode);
 CREATE INDEX IF NOT EXISTS idx_swing_reports_swing_mode ON swing_reports(swing_mode);
 
--- New signups start with 0 prepaid analyses ($19.99 per upload)
+-- New signups start with 0 prepaid analyses; swing uploads are purchased one at a time.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN

@@ -11,12 +11,10 @@ import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/client";
 import {
-  PRICE_FIRST_ANALYSIS_DISPLAY,
   PRICE_PER_ANALYSIS_DISPLAY,
   SWING_MODE_HINTS,
   SWING_MODE_LABELS,
   SWING_MODES,
-  getNextAnalysisPriceDisplay,
   type SwingMode,
 } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
@@ -107,7 +105,6 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [swingMode, setSwingMode] = useState<SwingMode>("full_swing");
   const [credits, setCredits] = useState<number | "unlimited" | null>(null);
-  const [nextPrice, setNextPrice] = useState(PRICE_FIRST_ANALYSIS_DISPLAY);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,12 +125,10 @@ export default function UploadPage() {
         .single();
       if (!sub) {
         setCredits(0);
-        setNextPrice(PRICE_FIRST_ANALYSIS_DISPLAY);
         return;
       }
       const used = sub.analyses_used ?? 0;
       const limit = sub.analyses_limit ?? 0;
-      setNextPrice(getNextAnalysisPriceDisplay(used, limit));
       if (sub.plan === "serious" || limit === -1) {
         setCredits("unlimited");
         return;
@@ -238,10 +233,7 @@ export default function UploadPage() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="text-3xl font-semibold">Upload</h1>
         <p className="mt-1 text-[var(--color-muted)]">
-          {nextPrice} per analysis · pick your mode first
-          {nextPrice === PRICE_FIRST_ANALYSIS_DISPLAY && (
-            <span> · then {PRICE_PER_ANALYSIS_DISPLAY} each</span>
-          )}
+          {PRICE_PER_ANALYSIS_DISPLAY} per analysis · pick your mode first
         </p>
         <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-muted)]">
           Videos are private and automatically removed after 30 days. Most reports are ready in
@@ -342,7 +334,7 @@ export default function UploadPage() {
               ? "Uploading..."
               : hasCredit
                 ? "Upload securely & analyze"
-                : `Buy credit first — ${nextPrice}`}
+                : `Buy credit first — ${PRICE_PER_ANALYSIS_DISPLAY}`}
           </Button>
         </Card>
       </main>

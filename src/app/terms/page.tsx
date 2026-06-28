@@ -5,7 +5,7 @@ export default function TermsPage() {
     <LegalPage title="Terms of Service">
       <section>
         <h2 className="text-lg font-semibold text-[var(--color-foreground)]">Service operator</h2>
-        <p>MySwingCoaches is operated by ForeFixed. By creating an account or purchasing an analysis, you agree to these terms.</p>
+        <p>ForeFixed. By creating an account or purchasing an analysis, you agree to these terms.</p>
       </section>
       <section>
         <h2 className="text-lg font-semibold text-[var(--color-foreground)]">AI-assisted coaching</h2>

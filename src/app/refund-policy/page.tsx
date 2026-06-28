@@ -5,7 +5,7 @@ export default function RefundPolicyPage() {
     <LegalPage title="Refund and Failed-Analysis Policy">
       <section>
         <h2 className="text-lg font-semibold text-[var(--color-foreground)]">Failed-analysis guarantee</h2>
-        <p>If MySwingCoaches cannot complete an analysis after its automatic retries, the analysis credit is restored automatically. You can use it for another qualifying upload without paying again.</p>
+        <p>If ForeFixed cannot complete an analysis after its automatic retries, the analysis credit is restored automatically. You can use it for another qualifying upload without paying again.</p>
       </section>
       <section>
         <h2 className="text-lg font-semibold text-[var(--color-foreground)]">Completed analyses</h2>

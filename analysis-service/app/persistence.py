@@ -9,7 +9,7 @@ from supabase import create_client
 from app.config import get_settings
 from app.frame_extractor import save_frame_jpeg
 from app.schemas import CoachingReportSchema, KeyFrame
-from app.trace_log import log_trace
+from app.report_converter import filter_phase_map
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,19 @@ def persist_analysis_result(
     ai_narrative_available: bool,
     gemini_meta: dict | None = None,
     trace_id: str | None = None,
+    phase_map: list[dict] | None = None,
+    swing_window: dict | None = None,
 ) -> None:
     client = get_supabase_client()
+    visible_phase_map = filter_phase_map(phase_map)
+    if not visible_phase_map:
+        report = report.model_copy(
+            update={
+                "advanced_details": report.advanced_details.model_copy(
+                    update={"diagnostic_checkpoints": []}
+                )
+            }
+        )
 
     key_frame_urls = [
         {"phase": f.phase, "storage_path": f.storage_path}
@@ -80,8 +91,19 @@ def persist_analysis_result(
     coaching_content = report.model_dump()
 
     gemini_raw = {
-        **coaching_content,
-        "_meta": gemini_meta or {},
+        "provider": "gemini",
+        "raw_responses": (gemini_meta or {}).get("raw_responses", []),
+        "meta": {k: v for k, v in (gemini_meta or {}).items() if k != "raw_responses"},
+        "final_report_preview": {
+            "pga_analysis": report.pga_analysis,
+            "main_fix": report.main_fix,
+            "advanced_details": report.advanced_details.model_dump(),
+        },
+        "debug_context": {
+            "key_frames": key_frame_urls,
+            "phase_map": visible_phase_map,
+            "swing_window": swing_window,
+        },
     }
 
     client.table("swing_reports").update({
@@ -99,6 +121,8 @@ def persist_analysis_result(
         "disclaimer": report.disclaimer,
         "coaching_content": coaching_content,
         "key_frame_urls": key_frame_urls,
+        "phase_map": visible_phase_map,
+        "swing_window": swing_window,
         "pose_landmarks": {},
         "gemini_raw": gemini_raw,
         "ai_narrative_available": ai_narrative_available,

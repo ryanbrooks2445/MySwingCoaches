@@ -1,29 +1,92 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
 import { DeleteSwingButton } from "@/components/DeleteSwingButton";
 import { SimplifiedSwingReport } from "@/components/SimplifiedSwingReport";
+import { SwingComparison } from "@/components/SwingComparison";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
-import { getSimplifiedReport, parseCoachingContent } from "@/lib/coaching";
+import { getFeelBlueprint, getSimplifiedReport, getVisiblePhaseMap, parseCoachingContent } from "@/lib/coaching";
 import { SWING_MODE_LABELS } from "@/lib/pricing";
 import { logTrace } from "@/lib/trace";
 import { DISCLAIMER } from "@/lib/utils";
 import type { SwingReport } from "@/lib/types";
+import type { ProgressState } from "@/lib/phase-frames";
+
+function DebugBlock({ title, value }: { title: string; value: unknown }) {
+  return (
+    <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-background)]">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">{title}</summary>
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap border-t border-[var(--color-border)] px-4 py-3 text-xs text-[var(--color-muted)]">
+        {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+function AnalysisDebugPanel({ report, finalReport }: { report: SwingReport; finalReport: unknown }) {
+  const rawResponses = Array.isArray(report.gemini_raw?.raw_responses)
+    ? report.gemini_raw.raw_responses
+    : [];
+
+  return (
+    <section className="mt-8 space-y-4 rounded-lg border border-dashed border-sky-500/50 bg-sky-50/40 p-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-sky-700">Developer analysis debug</p>
+        <h2 className="mt-1 text-lg font-semibold">Gemini input/output audit</h2>
+      </div>
+
+      {report.key_frame_urls?.length ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {report.key_frame_urls.map((frame) => (
+            <figure key={frame.phase} className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white">
+              {frame.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={frame.url} alt={`${frame.phase} debug frame`} className="aspect-[4/3] w-full object-contain bg-black" />
+              ) : null}
+              <figcaption className="px-2 py-1 text-xs text-[var(--color-muted)]">
+                {frame.phase.replaceAll("_", " ")}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : null}
+
+      <DebugBlock title="Phase labels" value={report.phase_map ?? []} />
+      <DebugBlock title="Raw Gemini response" value={rawResponses} />
+      <DebugBlock title="Final formatted report" value={finalReport} />
+      <DebugBlock title="Gemini debug payload" value={report.gemini_raw ?? {}} />
+    </section>
+  );
+}
 
 export default function SwingReportPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const reportId = params.id as string;
   const [report, setReport] = useState<SwingReport | null>(null);
+  const [comparison, setComparison] = useState<{
+    state: ProgressState;
+    priorMainFix: string | null;
+    priorCreatedAt: string | null;
+    priorFrames: SwingReport["key_frame_urls"];
+  } | null>(null);
+  const [drillVideoUrl, setDrillVideoUrl] = useState<string | null>(null);
+  const [drillVideoTitle, setDrillVideoTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     const res = await fetch(`/api/swings/${reportId}/status`);
-    const data = await readApiResponse<{ report?: SwingReport }>(res);
+    const data = await readApiResponse<{
+      report?: SwingReport;
+      comparison?: typeof comparison;
+      drillVideoUrl?: string | null;
+      drillVideoTitle?: string | null;
+    }>(res);
     if (!res.ok) {
       setError(data.error || "Could not load this report.");
       return;
@@ -33,6 +96,9 @@ export default function SwingReportPage() {
       return;
     }
     setReport(data.report);
+    if (data.comparison) setComparison(data.comparison);
+    if (data.drillVideoUrl !== undefined) setDrillVideoUrl(data.drillVideoUrl);
+    if (data.drillVideoTitle !== undefined) setDrillVideoTitle(data.drillVideoTitle);
     if (data.report) {
       logTrace("frontend_report_loaded", {
         trace_id: null,
@@ -123,7 +189,10 @@ export default function SwingReportPage() {
   }
 
   const coaching = parseCoachingContent(report);
-  const simplified = coaching ? getSimplifiedReport(coaching) : null;
+  const simplified = coaching ? getSimplifiedReport(coaching, report.phase_map) : null;
+  const coachLetter = coaching ? getFeelBlueprint(coaching) : null;
+  const debugEnabled =
+    searchParams.get("debug") === "1" || process.env.NEXT_PUBLIC_ANALYSIS_DEBUG === "true";
 
   return (
     <div className="min-h-screen">
@@ -152,7 +221,7 @@ export default function SwingReportPage() {
             </p>
           )}
           <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
-            Your coach read
+            {coachLetter?.headline?.trim() || "Your coach read"}
           </h1>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
             {new Date(report.created_at).toLocaleString()}
@@ -168,7 +237,24 @@ export default function SwingReportPage() {
 
         {simplified ? (
           <>
-            <SimplifiedSwingReport report={simplified} frames={report.key_frame_urls} />
+            {comparison && (
+              <SwingComparison
+                state={comparison.state}
+                currentMainFix={simplified.main_fix}
+                priorMainFix={comparison.priorMainFix}
+                priorCreatedAt={comparison.priorCreatedAt}
+                currentFrames={report.key_frame_urls ?? []}
+                priorFrames={comparison.priorFrames ?? []}
+              />
+            )}
+            <SimplifiedSwingReport
+              report={simplified}
+              frames={report.key_frame_urls}
+              phaseMap={getVisiblePhaseMap(report.phase_map)}
+              drillVideoUrl={drillVideoUrl}
+              drillVideoTitle={drillVideoTitle}
+            />
+            {debugEnabled && <AnalysisDebugPanel report={report} finalReport={coaching ?? simplified} />}
             <a href="/upload" className="mt-8 block">
               <Button className="w-full" size="lg">Upload another swing</Button>
             </a>

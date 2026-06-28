@@ -10,7 +10,15 @@ interface FeelBlueprintReportProps {
 
 export function FeelBlueprintReport({ feel }: FeelBlueprintReportProps) {
   return (
-    <Card className="mt-3 space-y-8">
+    <Card className="space-y-8">
+      {feel.headline?.trim() && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+            Pattern on film
+          </p>
+          <h3 className="mt-1 text-xl font-semibold tracking-tight">{feel.headline}</h3>
+        </div>
+      )}
       <ReportMarkdown content={feel.opening_narrative} className="text-[var(--color-foreground)] leading-relaxed" />
 
       <div>

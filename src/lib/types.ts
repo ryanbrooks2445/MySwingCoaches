@@ -187,6 +187,19 @@ export interface AdvancedDetails {
   next_checkpoint?: string;
 }
 
+export interface CategoryRating {
+  label: string;
+  rating: string;
+}
+
+export interface CoachVerdict {
+  overall_rating: string;
+  biggest_positive: string;
+  main_issue: string;
+  best_fix: string;
+  category_ratings: CategoryRating[];
+}
+
 export interface SimplifiedSwingReport {
   pga_analysis: string;
   main_fix: string;
@@ -195,6 +208,7 @@ export interface SimplifiedSwingReport {
   practice_plan?: string[];
   next_swing_check: string;
   advanced_details: AdvancedDetails;
+  coach_verdict?: CoachVerdict | null;
 }
 
 export interface CoachingContent {
@@ -204,6 +218,7 @@ export interface CoachingContent {
   tips_and_feels?: string[];
   drills?: DrillSummary[];
   next_swing_check?: string;
+  coach_verdict?: CoachVerdict | null;
   advanced_details?: AdvancedDetails;
   feel_blueprint?: FeelBlueprintDiagnostic;
   /** @deprecated Legacy reports only */
@@ -240,6 +255,8 @@ export interface SwingReport {
   next_upload_focus: string | null;
   disclaimer: string | null;
   key_frame_urls: KeyFrameUrl[];
+  phase_map?: PhaseFrame[];
+  swing_window?: SwingWindowMeta | null;
   pose_landmarks: Record<string, unknown>;
   ai_narrative_available: boolean;
   error_message: string | null;
@@ -251,6 +268,24 @@ export interface KeyFrameUrl {
   url?: string;
   storage_path?: string;
   confidence?: number;
+  person_visible?: boolean;
+  notes?: string;
+}
+
+export interface PhaseFrame {
+  phase: string;
+  frame_index: number;
+  confidence: number;
+  person_visible: boolean;
+  notes?: string;
+}
+
+export interface SwingWindowMeta {
+  start_frame: number;
+  end_frame: number;
+  duration_sec: number;
+  person_coverage_pct: number;
+  fps: number;
 }
 
 export interface SwingIssue {
@@ -291,10 +326,9 @@ export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
 };
 
 export {
-  PRICE_FIRST_ANALYSIS,
-  PRICE_FIRST_ANALYSIS_DISPLAY,
   PRICE_PER_ANALYSIS,
   PRICE_PER_ANALYSIS_DISPLAY,
+  PRICE_PER_ANALYSIS_CENTS,
   getNextAnalysisPrice,
   getNextAnalysisPriceDisplay,
 } from "@/lib/pricing";

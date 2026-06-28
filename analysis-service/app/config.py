@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     allowed_cors_origins: str = ""
     gemini_model: str = "gemini-2.5-flash"
     gemini_fallback_model: str = "gemini-2.5-flash"
+    gemini_max_quality_revisions: int = 3
+    gemini_max_output_tokens: int = 8192
+    gemini_temperature: float = 0.25
+    gemini_top_p: float = 0.9
     sentry_dsn: str = ""
 
     @model_validator(mode="after")

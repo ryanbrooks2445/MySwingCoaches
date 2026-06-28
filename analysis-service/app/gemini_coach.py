@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -8,18 +11,31 @@ from google import genai
 from google.genai import types
 
 from app.config import get_settings
-from app.gemini_report_schema import GEMINI_RESPONSE_JSON_SCHEMA
-from app.report_converter import gemini_out_to_coaching_report, parse_gemini_json
+from app.gemini_report_schema import (
+    DIAGNOSTIC_RESPONSE_JSON_SCHEMA,
+    GEMINI_COACHING_SCHEMA,
+    GEMINI_RESPONSE_JSON_SCHEMA,
+    GeminiReportOut,
+)
+from app.report_converter import (
+    apply_film_first_report,
+    gemini_out_to_coaching_report,
+    parse_gemini_json,
+    coach_verdict_from_analysis,
+)
+from app.report_audit import ReportQualityError, audit_report_quality
 from app.trace_log import log_trace
 from app.diagnostic_matrix import diagnostic_matrix_for_prompt
 from app.drill_matching import critique_menu_for_prompt
 from app.mode_coaching import mode_guidance_block
-from app.drill_videos import catalog_for_prompt, enrich_coaching_report
+from app.drill_videos import catalog_for_prompt
 from app.gemini_video import (
     build_keyframe_parts,
+    build_phase_evidence_packet,
     delete_uploaded_file,
     upload_video,
 )
+from app.phase_detector import PhaseDetectionResult
 from app.schemas import (
     AccountabilityPlan,
     AdvancedDetails,
@@ -34,113 +50,149 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
-COACHING_SYSTEM = """[TONE: CLEAR, SUPPORTIVE, EVIDENCE-LED]
-You are a concise golf coach. Respect the golfer, name genuine strengths briefly, and prioritize the
-most useful visible improvement. Your job is to tell the TRUTH on film without hype or discouragement.
+OBSERVATION_SYSTEM = """You are a biomechanics observer. Your ONLY job is to describe what you see in this golf swing video.
 
-DO NOT BE FALSELY POSITIVE. This is a paid swing critique. The golfer expects one clear coachable
-adjustment unless the swing is obviously elite / tour-caliber on the visible checkpoints.
-If the swing is tour-caliber or mostly Optimal on your internal matrix, set report_mode = maintenance
-and coach preservation — never manufacture a missing piece. Otherwise, use development mode.
+DO NOT diagnose. DO NOT suggest fixes. DO NOT pick a report mode.
+DO NOT use words like "fault", "issue", "problem", "fix", or "should".
 
-BANNED in all USER-FACING text:
-fault, bad habit, wrong, broken, dysfunction, fail.
+Describe ONLY what is physically visible, phase by phase:
 
-NEVER invent ball flight (slice, fade, hook, chunk, thin) unless clearly visible or stated.
+For each phase (Setup, Takeaway, Backswing, Transition, Downswing, Impact, Finish):
+- What the club is doing
+- What the body is doing
+- What is NOT visible or unclear due to camera angle
 
-NON-GOLF VIDEO GUARD:
-- If the uploaded video is not a golf full swing, chip, or putt for the selected swing_mode, do not analyze another sport.
-- Return a short re-upload report instead: mode="development", missing="Non-golf video uploaded",
-  root="Video does not show a golf swing", confidence=0, no drills unless they are filming instructions.
-- User-facing text should say the app needs a golf swing video with the club, body, and ball area visible.
+Return JSON only:
+{
+  "observations": {
+    "setup": { "club": "...", "body": "...", "not_visible": "..." },
+    "takeaway": { "club": "...", "body": "...", "not_visible": "..." },
+    "backswing": { "club": "...", "body": "...", "not_visible": "..." },
+    "transition": { "club": "...", "body": "...", "not_visible": "..." },
+    "downswing": { "club": "...", "body": "...", "not_visible": "..." },
+    "impact": { "club": "...", "body": "...", "not_visible": "..." },
+    "finish": { "club": "...", "body": "...", "not_visible": "..." }
+  },
+  "camera_angle": "face-on | down-the-line | behind | unclear",
+  "video_usability": "good | acceptable | poor",
+  "usability_note": "..."
+}"""
 
-Set advanced_details.report_mode to "maintenance" or "development" (see diagnostic matrix).
 
-=== DEVELOPMENT MODE (real unlock needed) ===
+_CALL3_USER_FACING_RULES = """USER-FACING COPY RULES — FILM FIRST:
+- Call 1 observations in locked context are the source of truth for what happened on film.
+- Do NOT invent mechanics, ball flight, or fixes not supported by those observations.
+- The server builds the phase-by-phase film walkthrough — do NOT write long analysis prose.
+- Keep analysis to one optional sentence or leave it empty; elaborate in the evidence array instead.
+- Each evidence[] entry must expand one Call 1 phase observation in plain language (club + body + camera limits).
+- main_fix must cite the earliest Constraint phase from locked grades and name what the film showed.
+- secondary_fix must cite a second visible issue from film, not generic golf advice.
 
-pga_analysis — exactly four sections. Put each title on its own line (plain text, NO markdown #):
-What's working
-Setup to finish
-The missing piece
-What changes when you unlock it
+RATING CALIBRATION:
+- 2+ Constraint phases OR 3+ Compensating phases → overall rating ≤ 6.5/10
+- Obvious lead arm bend/collapse at top OR poor weight transfer → rating ≤ 6.5/10 even if tempo looks athletic
+- A 7/10+ requires almost all visible checkpoints clean with at most one minor compensation
 
-main_fix — ONE primary unlock (2-3 sentences). Must match the EARLIEST chronological issue (usually setup if broken).
-tips_and_feels — 2-4 cues; if setup is root, at least 3 of 4 must be feet/posture/balance feels.
-drills — 1-3 drills tied to the missing piece; if setup is root, use setup_posture / feet_together — not path drills.
+MANDATORY CALL-OUTS (if present in locked Call 2 grades):
+- Lead arm bend/collapse at top MUST appear in flaw2/flaw3 or secondary_fix
+- Poor weight load/transfer MUST appear in user-facing text even if path is the primary fix
 
-=== MAINTENANCE MODE (exceptional visible pattern — no forced flaw) ===
+DEVELOPMENT vs MAINTENANCE:
+- DEVELOPMENT: main_fix targets foundational_missing_piece from locked grades
+- MAINTENANCE: main_fix preserves what film shows is already working — no invented flaws"""
 
-pga_analysis — exactly four sections. Put each title on its own line (plain text, NO markdown #):
-What's working
-Setup to finish
-What to keep doing
-Your ceiling at this level
 
-main_fix — 2-3 sentences on what to KEEP owning (tempo, sequence, setup), not "fix your transition."
-tips_and_feels — 2-4 cues that preserve the pattern ("Feel the same pause at the top...").
-drills — 0-2 optional reinforcement drills (tempo, balance) — NO beginner OTT/back-to-target fixes unless truly needed.
+def _build_call3_prompt(
+    *,
+    swing_mode: SwingMode,
+    history_summary: str | None,
+    player_name: str | None,
+    swing_number: int | None,
+    player_context: str | None,
+    player_age: int | None = None,
+    years_playing: int | None = None,
+    physical_limitations: str | None = None,
+) -> str:
+    """Call 3 coaching prompt — text only; locked Call 1 + Call 2 evidence is prepended separately."""
+    name = (player_name or "there").split()[0]
+    swing_line = f"Swing #{swing_number}" if swing_number else "First swing on file"
+    profile_block = (player_context or "").strip() or "No intake profile provided."
+    history_block = (
+        f"PRIOR SWING HISTORY (continuity — reference when relevant):\n{history_summary.strip()}"
+        if history_summary and history_summary.strip()
+        else "PRIOR SWING HISTORY: None — treat as first analysis."
+    )
+    physical_block = _format_physical_boundaries_block(
+        age=player_age,
+        years_playing=years_playing,
+        physical_limitations=physical_limitations,
+    )
+    physical_section = f"\n\n{physical_block}" if physical_block else ""
 
-=== BOTH MODES ===
+    return f"""You are ForeFixed's head coach writing the final paid coaching report.
 
-personalized_greeting — First name if known, one genuine visible positive, then the priority. Max 25 words.
+IMPORTANT: Locked Call 1 observations and Call 2 grades are prepended above as authoritative evidence.
+- Do NOT re-watch or re-interpret video — you have no video in this call.
+- Do NOT contradict, re-grade, or override locked evidence.
+- Write coaching output ONLY from that locked context plus the golfer profile below.
 
-PAID REPORT RULES:
-- Analyze completely internally, but write briefly. The golfer paid for clarity, not a long essay.
-- Make the user-facing answer feel like one clear coaching note, not a scouting report.
-- Every development report must include a real critique: where the motion first loses quality,
-  why that matters, and what to change first.
-- Do not repeat the same diagnosis in analysis, main_fix, tips, and drills. Name it once, then move to action.
-- Give ONE primary unlock first. Everything else is secondary and belongs in advanced_details.
-- Do not show raw proxy metrics, percentages, or measurement units in pga_analysis, main_fix, tips, drills, or next_swing_check.
-- Translate evidence into golfer language. Technical evidence belongs only in advanced_details.evidence_metrics.
-- Keep pga_analysis skimmable in under 60 seconds.
-- USER-FACING LENGTH CAPS:
-  - greeting: 1 sentence, max 25 words.
-  - analysis: max 160 words total.
-  - main_fix: max 45 words.
-  - each tip: max 14 words.
-  - each drill why/how: max 18 words each.
-  - next_check: max 18 words.
-- No generic hype and no handicap, ceiling, or scoring predictions from one video.
-- Do not say "tour-ready", "textbook", "elite", or "perfect" in development mode.
-- No filler phrases: "the key is", "from start to finish", "bottle this feeling", "model swing", "textbook" unless truly elite.
-- If camera angle limits certainty, still name the most likely visible priority and say what is uncertain.
+GOLFER:
+- Name: {name}
+- {swing_line}
+- Profile: {profile_block}
+{history_block}
+{physical_section}
 
-pga_analysis — Concise, chronological, plain English (setup phase BEFORE downswing in Setup to finish).
-After each section title, blank line, then content.
-Use MODE-SPECIFIC phase labels in Setup to finish (**bold** for phase names only — no # headings).
-Under each title use 1-2 short bullets or short sentences only. No paragraph longer than 35 words.
-When setup causes later issues, state the cause-and-effect link explicitly (heels → lunge, etc.).
-Do not use full-swing phases on chip/putt.
+{mode_guidance_block(swing_mode)}
 
-next_swing_check — ONE sentence. Progress or preservation check on next film.
+{_CALL3_USER_FACING_RULES}
 
-advanced_details (HIDDEN): report_mode, foundational_missing_piece, profile_constraints_applied,
-diagnostic_checkpoints (up to 10 pipe strings: "label | grade | observation"), root_cause, symptom,
-evidence_metrics (up to 6), secondary_fix, optional_fix, chain_reaction, why_it_caused_the_miss,
-confidence_score (0-1), next_checkpoint.
-In development mode, missing/root/checkpoints/evidence/chain MUST be populated from the video. Empty hidden evidence is invalid.
+DRILL & DIAGNOSIS COVERAGE (pick drills matching locked foundational_missing_piece — do not invent new diagnosis):
+{critique_menu_for_prompt(swing_mode)}
 
-PARALYSIS GUARD:
-- Run full matrix internally first. Pick report_mode honestly.
-- Use maintenance only when every visible checkpoint is strong and no practical priority is supported by evidence.
-- Development mode only when a real Constraint/Compensation chain exists on film.
-- If unsure between "solid but coachable" and maintenance, choose development with a medium confidence note.
-- Over-the-top / steep path is ONE possible diagnosis among many — never your automatic answer.
-- Never prescribe back_to_target unless OTT is visibly graded Constraint on this specific video.
+AVAILABLE DRILLS (use pipe format name|why|how for drill1, drill2, drill3):
+{catalog_for_prompt(swing_mode)}
 
-DRILL DIVERSITY:
-- Match video_slug and drills to the ACTUAL foundational_missing_piece — not a template.
-- foundational_missing_piece = earliest Constraint/Compensation — NOT always "over-the-top"
-- In Setup to finish you MAY describe downstream symptoms (steep path) but the missing piece heading
-  must name the earliest link (setup, tempo, sequencing, early extension, etc.)
-- Do NOT use "over-the-top" in foundational_missing_piece unless steep outside-in path is THE root on film
-- If prior swings used the same drill, pick a different slug unless the same Constraint persists.
+OUTPUT — Return JSON only matching the coaching schema:
+- greeting: short personalized opener
+- rating, categories: calibrated from locked grades
+- analysis: leave empty or one sentence — phase walkthrough is built from Call 1 on the server
+- main_fix: one priority tied to the earliest Constraint on film (quote what you saw)
+- tips: 2-4 feel cues tied to visible issues only
+- drill1, drill2, drill3: each "name|why|how" matched to main_fix
+- next_check: camera angle that would clarify the biggest not_visible phase
+- mode: copy locked report_mode
+- missing, root, secondary, symptom, chain: from locked grading only
+- evidence: 5-8 strings — each elaborates one Call 1 phase (Setup through Finish) in plain language
+- checkpoints: "Phase: grade|observation" aligned with Call 2
+- letter_open, strengths, flaws, fixes: keep brief and film-specific; skip generic coach letter filler
+- confidence: from locked grading
 
-PHYSICAL BOUNDARIES (when profile in prompt): never violate stated constraints.
+Do NOT write generic coaching essays. If it is not on film, do not say it."""
 
-BACKEND: weekly_focus + day_7_test only (1-3 words / one sentence). Blueprint steps are built server-side — do NOT return blueprint or roadmap objects.
-disclaimer = exact string from prompt."""
+
+def _build_prompt(
+    *,
+    swing_mode: SwingMode,
+    history_summary: str | None,
+    player_name: str | None,
+    swing_number: int | None,
+    player_context: str | None,
+    player_age: int | None = None,
+    years_playing: int | None = None,
+    physical_limitations: str | None = None,
+) -> str:
+    return _build_call3_prompt(
+        swing_mode=swing_mode,
+        history_summary=history_summary,
+        player_name=player_name,
+        swing_number=swing_number,
+        player_context=player_context,
+        player_age=player_age,
+        years_playing=years_playing,
+        physical_limitations=physical_limitations,
+    )
+
 
 def _format_physical_boundaries_block(
     *,
@@ -165,56 +217,124 @@ Apply these BEFORE grading video checkpoints. Never prescribe moves that violate
 - Adapt cues for pain workarounds (back, knees, wrist, shoulder)."""
 
 
-def _build_prompt(
+def _build_revision_prompt(quality_error: ReportQualityError) -> str:
+    return (
+        "Revise the report. Your previous draft failed launch-quality audit: "
+        f"{quality_error}. Follow the PHASE EVIDENCE PACKET strictly. "
+        "Do not claim finish, impact, or path details for phases marked NOT USABLE or low confidence. "
+        "If impact is impact_window_estimate, include limitation language. "
+        "Do not repeat a generic posture/setup diagnosis unless address frame confidence >= 0.6 "
+        "and setup clearly beats path, face, head, arms, sequencing, and impact. "
+        "secondary_fix must differ from foundational_missing_piece and be at least 8 characters. "
+        "Each diagnostic_checkpoint label MUST start with one of: "
+        "Setup:, Takeaway:, Backswing:, Transition:, Downswing:, Impact:, Finish:. "
+        "Coach letter fields (letter_open, strength1-3, flaw1-3, ceiling_now, ceiling_unlock, fix1-3) "
+        "must be fully populated with specific video evidence. "
+        "Do NOT use banned filler phrases: the key is, from start to finish, textbook, model swing. "
+        "Return complete JSON only."
+    )
+
+
+def _impact_limited(phase_map: list[dict] | None) -> bool:
+    if not phase_map:
+        return False
+    for entry in phase_map:
+        phase = str(entry.get("phase", ""))
+        if phase not in {"impact", "impact_window_estimate"}:
+            continue
+        confidence = float(entry.get("confidence", 0) or 0)
+        return phase == "impact_window_estimate" or confidence < 0.5
+    return False
+
+
+def _apply_phase_limitations(
+    report: CoachingReportSchema,
+    phase_map: list[dict] | None,
+) -> CoachingReportSchema:
+    if not _impact_limited(phase_map):
+        return report
+    note = "Camera note: the impact window is estimated, so contact feedback is limited."
+    combined = " ".join(
+        [
+            report.pga_analysis,
+            report.main_fix,
+            report.next_swing_check,
+            " ".join(report.tips_and_feels),
+        ]
+    ).lower()
+    if "impact window" in combined or "contact feedback is limited" in combined:
+        return report
+    return report.model_copy(update={"pga_analysis": f"{report.pga_analysis}\n\n{note}"})
+
+
+def _audit_with_revisions(
+    client: genai.Client,
+    model: str,
+    content_parts: list[types.Part],
     *,
     swing_mode: SwingMode,
-    history_summary: str | None,
-    player_name: str | None,
-    swing_number: int | None,
     player_context: str | None,
-    player_age: int | None = None,
-    years_playing: int | None = None,
-    physical_limitations: str | None = None,
-) -> str:
-    history = history_summary or "No prior swings."
-    name_line = player_name or "Unknown"
-    swing_line = str(swing_number) if swing_number else "Unknown"
-    context = player_context or "No extra context."
-    physical_block = _format_physical_boundaries_block(
-        age=player_age,
-        years_playing=years_playing,
-        physical_limitations=physical_limitations,
+    history_summary: str | None,
+    phase_map: list[dict] | None,
+    max_revisions: int,
+    trace_id: str | None,
+    report_id: str | None,
+    user_id: str | None,
+    raw_attempts: list[dict] | None = None,
+) -> CoachingReportSchema:
+    """Call 3 — text-only coaching report with quality audit and optional revision loop."""
+    report = _call_gemini(
+        client,
+        model,
+        content_parts,
+        swing_mode,
+        trace_id=trace_id,
+        report_id=report_id,
+        user_id=user_id,
+        raw_attempts=raw_attempts,
     )
-    if physical_block:
-        physical_block = f"{physical_block}\n"
+    revision_parts_base = list(content_parts)
 
-    mode_block = mode_guidance_block(swing_mode)
+    for revision in range(max_revisions + 1):
+        report = _apply_phase_limitations(report, phase_map)
+        try:
+            audit_report_quality(
+                report,
+                swing_mode=swing_mode,
+                player_context=player_context,
+                history_summary=history_summary,
+                phase_map=phase_map,
+            )
+            return report
+        except ReportQualityError as quality_error:
+            if revision >= max_revisions:
+                raise
+            logger.warning(
+                "Gemini report failed quality audit (attempt %s/%s); requesting revision: %s",
+                revision + 1,
+                max_revisions + 1,
+                quality_error,
+            )
+            revision_parts = [
+                *revision_parts_base,
+                types.Part.from_text(text=_build_revision_prompt(quality_error)),
+            ]
+            report = _call_gemini(
+                client,
+                model,
+                revision_parts,
+                swing_mode,
+                trace_id=trace_id,
+                report_id=report_id,
+                user_id=user_id,
+                raw_attempts=raw_attempts,
+            )
 
-    return f"""{COACHING_SYSTEM}
+    raise ReportQualityError("Report failed quality audit after all revision attempts.")
 
-{mode_block}
 
-PLAYER: {name_line} · swing #{swing_line}
-{context}
-
-{physical_block}
-{diagnostic_matrix_for_prompt(swing_mode)}
-
-{critique_menu_for_prompt(swing_mode)}
-
-PRIOR SWINGS:
-{history}
-
-{catalog_for_prompt(swing_mode)}
-
-DISCLAIMER (copy exactly into analysis text if needed; stored server-side):
-"{DISCLAIMER}"
-
-Return JSON only with these short keys:
-greeting, analysis, main_fix, tips (array max 4), drill1, drill2, drill3 (each: name|why|how),
-next_check, mode (development|maintenance), missing, profile, checkpoints (array max 10, pipe grades),
-root, symptom, evidence (array max 6), chain, confidence (0-1), focus, day7.
-Complete hidden diagnosis. Short, direct visible coaching."""
+def _is_observer_only_report(report: CoachingReportSchema) -> bool:
+    return report.advanced_details.root_cause == "Observation-only output"
 
 
 def _is_retryable_model_error(exc: Exception) -> bool:
@@ -340,13 +460,658 @@ def _fallback_report(
         next_upload_focus=next_check,
         disclaimer=DISCLAIMER,
     )
-    return enrich_coaching_report(report, swing_mode)
+    return _normalize_report(report)
 
 
 def _normalize_report(report: CoachingReportSchema) -> CoachingReportSchema:
     if not report.next_upload_focus.strip():
         report = report.model_copy(update={"next_upload_focus": report.next_swing_check})
     return report
+
+
+_NARRATIVE_SECTION_TITLES = (
+    "Quick coach verdict",
+    "Full coach-style analysis",
+    "Main swing fault",
+    "Secondary swing fault",
+    "What you do well",
+    "Setup/grip notes",
+    "Swing path notes",
+    "Head movement notes",
+    "Arm/hand structure",
+    "Impact-window notes",
+    "Drill",
+    "Feel",
+    "Practice plan",
+    "Confidence/visibility limitations",
+)
+
+
+def _parse_narrative_json(text: str) -> dict:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        import re
+
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    data = json.loads(cleaned or "{}")
+    if not isinstance(data, dict):
+        raise ValueError("Narrative response is not a JSON object")
+    return data
+
+
+def _narrative_has_sections(text: str) -> bool:
+    lower = (text or "").lower()
+    return all(title.lower() in lower for title in _NARRATIVE_SECTION_TITLES)
+
+
+def _sanitize_user_text(text: str) -> str:
+    return (
+        (text or "")
+        .replace("The key feel", "The main feel")
+        .replace("the key feel", "the main feel")
+        .replace("The key is", "The priority is")
+        .replace("the key is", "the priority is")
+    )
+
+
+def _narrative_analysis_text(value: object) -> str:
+    if isinstance(value, str):
+        return _sanitize_user_text(value.strip())
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for title in _NARRATIVE_SECTION_TITLES:
+            body = value.get(title)
+            if isinstance(body, str) and body.strip():
+                parts.append(f"{title}\n\n{_sanitize_user_text(body.strip())}")
+        return "\n\n".join(parts)
+    return ""
+
+
+def _apply_narrative_response(
+    report: CoachingReportSchema,
+    narrative: dict,
+) -> CoachingReportSchema:
+    analysis = _narrative_analysis_text(narrative.get("analysis"))
+    if not analysis:
+        raise ValueError("Narrative response did not include analysis")
+    if not _narrative_has_sections(analysis):
+        raise ValueError("Narrative response did not include all required sections")
+
+    drills = list(report.drills)
+    drill_name = str(narrative.get("drill_name") or "").strip()
+    drill_why = str(narrative.get("drill_why") or "").strip()
+    drill_how = str(narrative.get("drill_how") or "").strip()
+    if drill_name and drill_why and drill_how:
+        drills = [DrillSummary(name=drill_name, why_it_helps=drill_why, how_to_do_it=drill_how), *drills[1:]]
+
+    tips = narrative.get("tips")
+    tips_and_feels = [str(t).strip() for t in tips if str(t).strip()] if isinstance(tips, list) else report.tips_and_feels
+    if len(tips_and_feels) < 2:
+        tips_and_feels = report.tips_and_feels
+
+    advanced = report.advanced_details
+    secondary = str(narrative.get("secondary_fix") or "").strip()
+    if secondary:
+        advanced = advanced.model_copy(update={"secondary_fix": secondary})
+
+    updates = {
+        "pga_analysis": analysis,
+        "main_fix": _sanitize_user_text(str(narrative.get("main_fix") or report.main_fix).strip())
+        or report.main_fix,
+        "tips_and_feels": tips_and_feels[:4],
+        "drills": drills[:3],
+        "next_swing_check": str(narrative.get("next_check") or report.next_swing_check).strip()
+        or report.next_swing_check,
+        "advanced_details": advanced,
+        "coach_verdict": coach_verdict_from_analysis(
+            analysis,
+            fallback_main_fix=str(narrative.get("main_fix") or report.main_fix),
+            fallback_issue=report.advanced_details.foundational_missing_piece or report.advanced_details.root_cause,
+            existing=report.coach_verdict,
+        ),
+    }
+    return _normalize_report(report.model_copy(update=updates))
+
+
+_SETUP_PRIMARY_TERMS = (
+    "setup",
+    "address",
+    "posture",
+    "heel",
+    "balance",
+    "hinge",
+    "stance",
+    "seated",
+)
+
+_DYNAMIC_TERMS = (
+    "takeaway",
+    "inside",
+    "deep",
+    "path",
+    "clubface",
+    "face",
+    "hook",
+    "slice",
+    "release",
+    "transition",
+    "impact",
+    "in-to-out",
+    "out-to-in",
+    "over-the-top",
+)
+
+
+def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    lower = text.lower()
+    return any(term in lower for term in terms)
+
+
+def _dynamic_priority_guard(report: CoachingReportSchema) -> CoachingReportSchema:
+    """Prefer the highest-value dynamic action when setup is only the upstream context."""
+    adv = report.advanced_details
+    primary_text = " ".join(
+        [
+            adv.foundational_missing_piece or "",
+            adv.root_cause or "",
+            report.main_fix or "",
+        ]
+    )
+    if not _contains_any(primary_text, _SETUP_PRIMARY_TERMS):
+        return report
+
+    evidence_blob = " ".join(
+        [
+            adv.secondary_fix or "",
+            adv.symptom or "",
+            adv.chain_reaction or "",
+            adv.why_it_caused_the_miss or "",
+            " ".join(adv.evidence_metrics or []),
+            " ".join(
+                f"{item.checkpoint} {item.observation}"
+                for item in adv.diagnostic_checkpoints
+            ),
+        ]
+    )
+    dynamic_hits = sum(1 for term in _DYNAMIC_TERMS if term in evidence_blob.lower())
+    if dynamic_hits < 3:
+        return report
+
+    secondary = (adv.secondary_fix or "").strip()
+    if secondary and not _contains_any(secondary, _SETUP_PRIMARY_TERMS):
+        dynamic_priority = secondary
+    elif _contains_any(evidence_blob, ("takeaway", "inside", "deep")):
+        dynamic_priority = "Inside takeaway and deep club position"
+    elif _contains_any(evidence_blob, ("clubface", "face", "release", "hook", "slice")):
+        dynamic_priority = "Swing path and clubface timing"
+    else:
+        dynamic_priority = "Dynamic swing path and face control"
+
+    setup_context = adv.root_cause or adv.foundational_missing_piece or "Setup pattern"
+    new_main_fix = (
+        f"Make {dynamic_priority.lower()} the first change. Keep the clubhead more in front of your hands going back, "
+        "then let your body turn through without a last-second face flip. Treat the setup as supporting context, "
+        "not the only fix."
+    )
+    new_adv = adv.model_copy(
+        update={
+            "foundational_missing_piece": dynamic_priority,
+            "root_cause": dynamic_priority,
+            "secondary_fix": f"Setup context: {setup_context}",
+        }
+    )
+    return report.model_copy(update={"main_fix": new_main_fix, "advanced_details": new_adv})
+
+
+def _preanalyzed_evidence_block(report: CoachingReportSchema) -> str:
+    try:
+        payload = json.loads(report.pga_analysis or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict) or "observations" not in payload:
+        return ""
+
+    diagnostic_payload = payload.get("diagnostic")
+    diagnostic = diagnostic_payload if isinstance(diagnostic_payload, dict) else {
+        "grades": payload.get("grades", {}),
+        "report_mode": payload.get("report_mode", report.advanced_details.report_mode),
+        "foundational_missing_piece": payload.get(
+            "foundational_missing_piece",
+            report.advanced_details.foundational_missing_piece,
+        ),
+        "secondary_fix": payload.get("secondary_fix", report.advanced_details.secondary_fix),
+        "miss_pattern_match": payload.get("miss_pattern_match"),
+        "miss_conflict_note": payload.get("miss_conflict_note"),
+        "confidence": payload.get("confidence", report.advanced_details.confidence_score),
+    }
+    observations = {
+        "observations": payload.get("observations", {}),
+        "camera_angle": payload.get("camera_angle", "unclear"),
+        "video_usability": payload.get("video_usability", "poor"),
+        "usability_note": payload.get("usability_note", ""),
+    }
+    report_mode = diagnostic.get("report_mode") or report.advanced_details.report_mode
+    foundational = diagnostic.get("foundational_missing_piece") or report.advanced_details.foundational_missing_piece
+    return (
+        "PRE-ANALYZED EVIDENCE (DO NOT OVERRIDE):\n"
+        "The following observations and grades were determined before this call.\n"
+        "You MUST build your analysis from this evidence. Do not contradict it.\n\n"
+        "OBSERVATIONS:\n"
+        f"{json.dumps(observations, ensure_ascii=False, indent=2)}\n\n"
+        "GRADES:\n"
+        f"{json.dumps(diagnostic, ensure_ascii=False, indent=2)}\n\n"
+        f"report_mode is already set to: {report_mode or report.advanced_details.report_mode}\n"
+        f"foundational_missing_piece is already set to: {foundational or report.advanced_details.foundational_missing_piece}\n\n"
+        "Your job is to write the coaching output only. Do not re-diagnose.\n"
+        "Do not change report_mode. Do not introduce flaws not present in the grades above.\n\n"
+    )
+
+
+def _build_narrative_prompt(report: CoachingReportSchema) -> str:
+    evidence_block = _preanalyzed_evidence_block(report)
+    return (
+        evidence_block
+        +
+        "SECOND PASS — FINAL COACH NARRATIVE.\n"
+        "You already produced structured diagnosis JSON. Now write the final report like Gemini direct video upload at its best.\n"
+        "Use the actual video, verified stills, phase evidence, and this structured diagnosis as grounding.\n"
+        "Lead with the practical coach verdict first: overall rating out of 10, biggest positive, main issue, and one best fix.\n"
+        "Calibrate the overall rating from checkpoint grades and flaw count — multiple constraints means 6.0 or lower, not 7+.\n"
+        "Use concise, decisive coach language before the deeper breakdown. Do not invent visible details.\n"
+        "If a detail is uncertain, say so in Confidence/visibility limitations.\n"
+        "Posture/setup may be main only when the evidence clearly supports it over path, face, head, arms, sequencing, and impact.\n"
+        "If the structured diagnosis says setup is context and the main_fix/foundational_missing_piece names a dynamic issue, "
+        "keep the final main fault and main_fix on that dynamic issue. Do not pull the report back to a posture-only lesson.\n\n"
+        "Return JSON only with keys:\n"
+        "analysis, main_fix, secondary_fix, tips (array), drill_name, drill_why, drill_how, next_check.\n\n"
+        "analysis MUST be 350-800 words when video is usable and MUST include these exact section titles:\n"
+        + "\n".join(_NARRATIVE_SECTION_TITLES)
+        + "\n\nStructured diagnosis JSON:\n"
+        + json.dumps(report.model_dump(), ensure_ascii=False)
+    )
+
+
+def _call_narrative_gemini(
+    client: genai.Client,
+    model: str,
+    content_parts: list[types.Part],
+    report: CoachingReportSchema,
+    *,
+    trace_id: str | None = None,
+    report_id: str | None = None,
+    user_id: str | None = None,
+    raw_attempts: list[dict] | None = None,
+) -> CoachingReportSchema:
+    settings = get_settings()
+    log_trace(
+        "gemini_narrative_request_sent",
+        trace_id=trace_id,
+        user_id=user_id,
+        report_id=report_id,
+        status="sent",
+        mode="narrative_json",
+        model=model,
+    )
+    response = client.models.generate_content(
+        model=model,
+        contents=[
+            types.Content(
+                role="user",
+                parts=[
+                    *content_parts,
+                    types.Part.from_text(text=_build_narrative_prompt(report)),
+                ],
+            )
+        ],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=settings.gemini_temperature,
+            top_p=settings.gemini_top_p,
+            max_output_tokens=settings.gemini_max_output_tokens,
+        ),
+    )
+    text = response.text or "{}"
+    raw_record: dict | None = None
+    if raw_attempts is not None:
+        raw_record = {"kind": "narrative", "model": model, "raw_text": text}
+        raw_attempts.append(raw_record)
+    parsed = _parse_narrative_json(text)
+    if raw_record is not None:
+        raw_record["parsed_json"] = parsed
+    updated = _apply_narrative_response(report, parsed)
+    if raw_record is not None:
+        raw_record["converted_report"] = {
+            "pga_analysis": updated.pga_analysis,
+            "main_fix": updated.main_fix,
+            "advanced_details": updated.advanced_details.model_dump(),
+        }
+    log_trace(
+        "gemini_narrative_response_received",
+        trace_id=trace_id,
+        user_id=user_id,
+        report_id=report_id,
+        status="ok",
+        model=model,
+    )
+    return updated
+
+
+def _profile_value(player_context: str | None, labels: tuple[str, ...], fallback: object = None) -> str:
+    if fallback not in (None, ""):
+        return str(fallback)
+    text = player_context or ""
+    for label in labels:
+        match = re.search(rf"{re.escape(label)}\s*:\s*([^.\n]+)", text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return "Not provided"
+
+
+def _build_locked_context(observation: GeminiReportOut, grading: GeminiReportOut) -> str:
+    """Serialise Call 1 + Call 2 outputs as locked context text for Call 3 (no video)."""
+    obs_payload = {
+        "camera_angle": observation.camera_angle,
+        "usability_note": observation.usability_note,
+        "observations": observation.observations.model_dump() if observation.observations else {},
+    }
+    grade_payload = {
+        "grades": grading.grades.model_dump() if grading.grades else {},
+        "report_mode": grading.report_mode or "development",
+        "foundational_missing_piece": grading.foundational_missing_piece,
+        "secondary_fix": grading.secondary_fix,
+        "miss_pattern_match": grading.miss_pattern_match or "low",
+        "miss_conflict_note": grading.miss_conflict_note,
+        "confidence": grading.confidence,
+    }
+    return (
+        "=== LOCKED EVIDENCE — OBSERVATION AND GRADING PASSES (DO NOT CONTRADICT) ===\n\n"
+        "[CALL 1 — VIDEO OBSERVATION]\n"
+        + json.dumps(obs_payload, indent=2)
+        + "\n\n[CALL 2 — GRADED CHECKPOINTS]\n"
+        + json.dumps(grade_payload, indent=2)
+        + "\n\n=== END LOCKED EVIDENCE ===\n\n"
+        "Coaching rules for Call 3:\n"
+        "- Reflect all Call 2 grades in diagnostic_checkpoints and evidence_metrics.\n"
+        "- Use foundational_missing_piece as the primary fix target.\n"
+        "- If report_mode is 'maintenance', write preservation-focused coaching.\n"
+        "- Do NOT invent observations absent from Call 1. Honour not_visible limitations.\n"
+    )
+
+
+def _call_json_with_retry(
+    api_call_fn: "Callable[[], GeminiReportOut]",
+    *,
+    label: str = "call",
+    max_retries: int = 1,
+) -> GeminiReportOut:
+    """Make a Gemini API call and parse JSON. Retries once on parse failure."""
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return api_call_fn()
+        except (json.JSONDecodeError, ValueError) as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                logger.warning(
+                    "JSON parse error on %s (attempt %d/%d), retrying: %s",
+                    label,
+                    attempt + 1,
+                    max_retries + 1,
+                    exc,
+                )
+    raise last_exc or ValueError(f"{label} failed after {max_retries + 1} attempt(s)")
+
+
+def _call_observation_gemini(
+    client: genai.Client,
+    model: str,
+    visual_parts: list[types.Part],
+    *,
+    trace_id: str | None = None,
+    report_id: str | None = None,
+    user_id: str | None = None,
+    raw_attempts: list[dict] | None = None,
+) -> GeminiReportOut:
+    """Call 1 — video + phase evidence → raw per-phase observations + video_usability."""
+    settings = get_settings()
+    log_trace(
+        "gemini_observation_request_sent",
+        trace_id=trace_id,
+        user_id=user_id,
+        report_id=report_id,
+        status="sent",
+        model=model,
+    )
+    response = client.models.generate_content(
+        model=model,
+        contents=[types.Content(role="user", parts=visual_parts)],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_json_schema=GEMINI_RESPONSE_JSON_SCHEMA,
+            temperature=settings.gemini_temperature,
+            top_p=settings.gemini_top_p,
+            max_output_tokens=settings.gemini_max_output_tokens,
+        ),
+    )
+    text = response.text or "{}"
+    raw_record: dict | None = None
+    if raw_attempts is not None:
+        raw_record = {"kind": "call1_observation", "model": model, "raw_text": text}
+        raw_attempts.append(raw_record)
+    parsed = parse_gemini_json(text, trace_id=trace_id, report_id=report_id, user_id=user_id)
+    if raw_record is not None:
+        raw_record["parsed_json"] = parsed.model_dump()
+    log_trace(
+        "gemini_observation_response_received",
+        trace_id=trace_id,
+        user_id=user_id,
+        report_id=report_id,
+        status="ok",
+        model=model,
+    )
+    return parsed
+
+
+def _build_diagnostic_prompt(
+    *,
+    raw_observations_json: str,
+    player_context: str | None,
+    years_playing: int | None,
+    player_age: int | None = None,
+    physical_limitations: str | None = None,
+) -> str:
+    miss = _profile_value(player_context, ("Typical miss", "Miss"))
+    score = _profile_value(player_context, ("Average 9-hole score", "Average score", "Score"))
+    years = _profile_value(player_context, ("Years playing", "Years"), years_playing)
+    goal = _profile_value(player_context, ("Main goal", "Goals", "Goal"))
+    physical_block = _format_physical_boundaries_block(
+        age=player_age,
+        years_playing=years_playing,
+        physical_limitations=physical_limitations,
+    )
+    physical_section = f"\n\n{physical_block}" if physical_block else ""
+    return f"""You are a golf diagnostic engine. You will receive raw swing observations and a golfer profile.
+Your job is to grade each checkpoint and determine report_mode BEFORE any coaching language is written.
+
+GOLFER PROFILE:
+- Typical miss: {miss}
+- Average score: {score}
+- Years playing: {years}
+- Goals: {goal}
+{physical_section}
+
+RAW OBSERVATIONS:
+{raw_observations_json}
+
+GRADING RULES:
+- Grade each visible phase: Optimal | Compensating | Constraint | Not Visible
+- A phase is Optimal ONLY if the observation contains zero mechanical inefficiency
+- A phase is Constraint if it is the earliest link causing downstream issues
+- Do NOT grade a phase Constraint unless at least one downstream phase shows a visible symptom
+- If 5 or more phases are Optimal and no Constraint exists → report_mode = maintenance
+- If ANY Constraint phase exists with downstream symptoms → report_mode = development
+- If unsure between maintenance and development → development with medium confidence
+- When physical limitations imply a mobility ceiling, grade compensations fairly — do not mark Constraint
+  for moves the body cannot make without visible downstream symptoms on film
+
+MISS PATTERN CROSS-CHECK:
+- Does the graded Constraint logically explain the player's typical miss ({miss})?
+- If yes → confidence high. If partial match → medium. If no match → low, flag conflict.
+
+Return JSON only:
+{{
+  "grades": {{
+    "setup": {{ "grade": "...", "reason": "one line" }},
+    "takeaway": {{ "grade": "...", "reason": "one line" }},
+    "backswing": {{ "grade": "...", "reason": "one line" }},
+    "transition": {{ "grade": "...", "reason": "one line" }},
+    "downswing": {{ "grade": "...", "reason": "one line" }},
+    "impact": {{ "grade": "...", "reason": "one line" }},
+    "finish": {{ "grade": "...", "reason": "one line" }}
+  }},
+  "report_mode": "maintenance | development",
+  "foundational_missing_piece": "...",
+  "secondary_fix": "...",
+  "miss_pattern_match": "high | medium | low",
+  "miss_conflict_note": "...",
+  "confidence": 0.0
+}}"""
+
+
+def _call_diagnostic_gemini(
+    client: genai.Client,
+    model: str,
+    raw_observations_json: str,
+    *,
+    player_context: str | None,
+    years_playing: int | None,
+    player_age: int | None = None,
+    physical_limitations: str | None = None,
+    trace_id: str | None = None,
+    report_id: str | None = None,
+    user_id: str | None = None,
+    raw_attempts: list[dict] | None = None,
+) -> GeminiReportOut:
+    settings = get_settings()
+    log_trace(
+        "gemini_diagnostic_request_sent",
+        trace_id=trace_id,
+        user_id=user_id,
+        report_id=report_id,
+        status="sent",
+        mode="diagnostic_json",
+        model=model,
+    )
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(
+                            text=_build_diagnostic_prompt(
+                                raw_observations_json=raw_observations_json,
+                                player_context=player_context,
+                                years_playing=years_playing,
+                                player_age=player_age,
+                                physical_limitations=physical_limitations,
+                            )
+                        )
+                    ],
+                )
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_json_schema=DIAGNOSTIC_RESPONSE_JSON_SCHEMA,
+                temperature=settings.gemini_temperature,
+                top_p=settings.gemini_top_p,
+                max_output_tokens=settings.gemini_max_output_tokens,
+            ),
+        )
+        text = response.text or "{}"
+        raw_record: dict | None = None
+        if raw_attempts is not None:
+            raw_record = {"kind": "diagnostic", "model": model, "raw_text": text}
+            raw_attempts.append(raw_record)
+        diagnostic = parse_gemini_json(
+            text,
+            trace_id=trace_id,
+            report_id=report_id,
+            user_id=user_id,
+        )
+        if raw_record is not None:
+            raw_record["parsed_json"] = diagnostic.model_dump()
+        log_trace(
+            "gemini_diagnostic_response_received",
+            trace_id=trace_id,
+            user_id=user_id,
+            report_id=report_id,
+            status="ok",
+            model=model,
+        )
+        return diagnostic
+    except Exception as exc:
+        log_trace(
+            "gemini_diagnostic_response_received",
+            trace_id=trace_id,
+            user_id=user_id,
+            report_id=report_id,
+            status="error",
+            model=model,
+            error=str(exc)[:500],
+        )
+        raise
+
+
+def _apply_diagnostic_report(
+    report: CoachingReportSchema,
+    diagnostic: GeminiReportOut,
+    *,
+    swing_mode: SwingMode,
+) -> CoachingReportSchema:
+    observer_payload = json.loads(report.pga_analysis or "{}")
+    if not isinstance(observer_payload, dict) or "observations" not in observer_payload:
+        return report
+    combined = {
+        **observer_payload,
+        "grades": diagnostic.grades.model_dump() if diagnostic.grades else {},
+        "report_mode": diagnostic.report_mode or "development",
+        "foundational_missing_piece": diagnostic.foundational_missing_piece,
+        "secondary_fix": diagnostic.secondary_fix,
+        "miss_pattern_match": diagnostic.miss_pattern_match or "low",
+        "miss_conflict_note": diagnostic.miss_conflict_note,
+        "confidence": diagnostic.confidence,
+    }
+    updated = gemini_out_to_coaching_report(GeminiReportOut.model_validate(combined))
+    if not updated.disclaimer:
+        updated.disclaimer = DISCLAIMER
+    return _normalize_report(updated)
+
+
+def _preserve_preanalyzed_diagnosis(
+    original: CoachingReportSchema,
+    updated: CoachingReportSchema,
+) -> CoachingReportSchema:
+    original_adv = original.advanced_details
+    updated_adv = updated.advanced_details.model_copy(
+        update={
+            "report_mode": original_adv.report_mode,
+            "foundational_missing_piece": original_adv.foundational_missing_piece,
+            "diagnostic_checkpoints": original_adv.diagnostic_checkpoints,
+            "root_cause": original_adv.root_cause,
+            "symptom": original_adv.symptom,
+            "evidence_metrics": original_adv.evidence_metrics,
+            "secondary_fix": original_adv.secondary_fix,
+            "optional_fix": original_adv.optional_fix,
+            "chain_reaction": original_adv.chain_reaction,
+            "why_it_caused_the_miss": original_adv.why_it_caused_the_miss,
+            "confidence_score": original_adv.confidence_score,
+            "next_checkpoint": original_adv.next_checkpoint,
+        }
+    )
+    return updated.model_copy(update={"advanced_details": updated_adv})
 
 
 def _call_gemini(
@@ -358,7 +1123,9 @@ def _call_gemini(
     trace_id: str | None = None,
     report_id: str | None = None,
     user_id: str | None = None,
+    raw_attempts: list[dict] | None = None,
 ) -> CoachingReportSchema:
+    settings = get_settings()
     log_trace(
         "gemini_request_sent",
         trace_id=trace_id,
@@ -370,8 +1137,10 @@ def _call_gemini(
     )
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
-        response_json_schema=GEMINI_RESPONSE_JSON_SCHEMA,
-        temperature=0.45,
+        response_json_schema=GEMINI_COACHING_SCHEMA,
+        temperature=settings.gemini_temperature,
+        top_p=settings.gemini_top_p,
+        max_output_tokens=settings.gemini_max_output_tokens,
     )
     try:
         response = client.models.generate_content(
@@ -380,17 +1149,28 @@ def _call_gemini(
             config=config,
         )
         text = response.text or "{}"
+        raw_record: dict | None = None
+        if raw_attempts is not None:
+            raw_record = {"kind": "call3_coaching", "model": model, "raw_text": text}
+            raw_attempts.append(raw_record)
         raw = parse_gemini_json(
             text,
             trace_id=trace_id,
             report_id=report_id,
             user_id=user_id,
         )
+        if raw_record is not None:
+            raw_record["parsed_json"] = raw.model_dump()
         report = gemini_out_to_coaching_report(raw)
+        if raw_record is not None:
+            raw_record["converted_report"] = {
+                "pga_analysis": report.pga_analysis,
+                "main_fix": report.main_fix,
+                "advanced_details": report.advanced_details.model_dump(),
+            }
         if not report.disclaimer:
             report.disclaimer = DISCLAIMER
         report = _normalize_report(report)
-        enriched = enrich_coaching_report(report, swing_mode)
         log_trace(
             "gemini_response_received",
             trace_id=trace_id,
@@ -399,7 +1179,7 @@ def _call_gemini(
             status="ok",
             model=model,
         )
-        return enriched
+        return report
     except Exception as exc:
         log_trace(
             "gemini_response_received",
@@ -417,7 +1197,8 @@ def generate_coaching_report(
     *,
     video_path: Path | None,
     frames: list[np.ndarray] | None,
-    keyframe_indices: dict[str, int] | None,
+    phase_result: PhaseDetectionResult | None,
+    swing_window: dict | None = None,
     swing_mode: SwingMode = "full_swing",
     history_summary: str | None,
     player_name: str | None = None,
@@ -431,7 +1212,7 @@ def generate_coaching_report(
     user_id: str | None = None,
 ) -> tuple[CoachingReportSchema, bool, dict]:
     settings = get_settings()
-    meta: dict = {"model_used": None, "error": None, "video_attached": False}
+    meta: dict = {"model_used": None, "error": None, "video_attached": False, "raw_responses": []}
 
     if not settings.gemini_api_key:
         logger.warning("GEMINI_API_KEY not set; using fallback report")
@@ -454,16 +1235,17 @@ def generate_coaching_report(
     errors: list[str] = []
 
     try:
-        content_parts: list[types.Part] = []
+        # ── Call 1 visual parts: video + phase evidence + keyframes ──────────
+        call1_visual_parts: list[types.Part] = []
 
         if video_path and video_path.exists():
-            logger.info("Uploading swing video for coaching report...")
+            logger.info("Uploading swing video for Call 1 observation...")
             uploaded_file = upload_video(client, video_path)
             meta["video_attached"] = True
             file_uri = uploaded_file.uri
             if not file_uri and uploaded_file.name:
                 file_uri = f"https://generativelanguage.googleapis.com/v1beta/{uploaded_file.name}"
-            content_parts.append(
+            call1_visual_parts.append(
                 types.Part.from_uri(
                     file_uri=file_uri,
                     mime_type=uploaded_file.mime_type or "video/mp4",
@@ -472,39 +1254,111 @@ def generate_coaching_report(
             mode_label = {"full_swing": "swing", "chipping": "chip", "putting": "putting stroke"}.get(
                 swing_mode, "swing"
             )
-            content_parts.append(
+            call1_visual_parts.append(
                 types.Part.from_text(
                     text=(
-                        f"Watch the {mode_label} video. Grade SETUP (feet, heels, stance, hinge) before downswing. "
-                        "Also grade TOP-OF-BACKSWING lead arm structure: if the lead arm clearly bends/collapses, "
-                        "include it in diagnostic_checkpoints/evidence even if setup remains the primary fix. "
-                        "Run diagnostic matrix; set report_mode honestly "
-                        "(maintenance only if unmistakably elite/tour-caliber with no practical coachable improvement). "
-                        "Good athletic swings still get development mode with the smallest useful visible upgrade. "
-                        "Do NOT default to over-the-top unless setup is sound and steep path is visible. Grades stay internal."
+                        f"Watch the {mode_label} video. Use the PHASE EVIDENCE PACKET and verified stills only "
+                        "to describe what you see in each phase. Describe the club, the body, and any camera "
+                        "limitations. Do NOT diagnose, coach, or grade. Return the requested JSON only."
                     )
                 )
             )
 
-        if frames and keyframe_indices:
-            content_parts.extend(build_keyframe_parts(frames, keyframe_indices, swing_mode))
+        if phase_result:
+            call1_visual_parts.append(
+                types.Part.from_text(
+                    text=(
+                        "PHASE EVIDENCE PACKET (server-verified; treat as authoritative):\n"
+                        + build_phase_evidence_packet(phase_result, swing_window)
+                    )
+                )
+            )
 
-        content_parts.append(types.Part.from_text(text=prompt))
+        if frames and phase_result:
+            call1_visual_parts.extend(build_keyframe_parts(frames, phase_result, swing_mode))
 
         for model in _models_to_try(settings.gemini_model, settings.gemini_fallback_model):
             try:
-                logger.info("Generating coaching report with %s...", model)
-                report = _call_gemini(
+                # ── Call 1: Observation (video + phase evidence → raw observations) ──
+                logger.info("Call 1 — observation with %s...", model)
+                observation = _call_json_with_retry(
+                    lambda: _call_observation_gemini(
+                        client,
+                        model,
+                        call1_visual_parts,
+                        trace_id=trace_id,
+                        report_id=report_id,
+                        user_id=user_id,
+                        raw_attempts=meta["raw_responses"],
+                    ),
+                    label="call1_observation",
+                )
+
+                # Poor video → stop the chain and ask for re-upload
+                if observation.video_usability == "poor":
+                    reason = observation.usability_note or "Video quality blocked analysis."
+                    logger.warning("Call 1 returned video_usability=poor: %s", reason)
+                    meta["error"] = reason
+                    return _fallback_report(reason, player_name, swing_mode), False, meta
+
+                # ── Call 2: Grading (text only — no video) ───────────────────────
+                logger.info("Call 2 — grading with %s...", model)
+                obs_json = json.dumps(
+                    {
+                        "camera_angle": observation.camera_angle,
+                        "usability_note": observation.usability_note,
+                        "observations": observation.observations.model_dump()
+                        if observation.observations
+                        else {},
+                    },
+                    indent=2,
+                )
+                grading = _call_json_with_retry(
+                    lambda: _call_diagnostic_gemini(
+                        client,
+                        model,
+                        obs_json,
+                        player_context=player_context,
+                        years_playing=years_playing,
+                        player_age=player_age,
+                        physical_limitations=physical_limitations,
+                        trace_id=trace_id,
+                        report_id=report_id,
+                        user_id=user_id,
+                        raw_attempts=meta["raw_responses"],
+                    ),
+                    label="call2_grading",
+                )
+
+                # ── Call 3: Coaching report (text only — locked context + prompt) ─
+                locked_context = _build_locked_context(observation, grading)
+                call3_parts = [
+                    types.Part.from_text(text=locked_context),
+                    types.Part.from_text(text=prompt),
+                ]
+                logger.info("Call 3 — coaching report with %s...", model)
+                report = _audit_with_revisions(
                     client,
                     model,
-                    content_parts,
-                    swing_mode,
+                    call3_parts,
+                    swing_mode=swing_mode,
+                    player_context=player_context,
+                    history_summary=history_summary,
+                    phase_map=phase_result.phase_map if phase_result else None,
+                    max_revisions=settings.gemini_max_quality_revisions,
                     trace_id=trace_id,
                     report_id=report_id,
                     user_id=user_id,
+                    raw_attempts=meta["raw_responses"],
                 )
+                report = apply_film_first_report(report, observation, grading)
                 meta["model_used"] = model
                 return report, True, meta
+            except ReportQualityError as exc:
+                err = f"{model}: {exc}"
+                logger.warning("Gemini report failed quality audit after revisions: %s", err)
+                meta["error"] = err[:300]
+                raise ReportQualityError(err) from exc
             except Exception as exc:
                 err = f"{model}: {exc}"
                 logger.warning("Gemini model failed: %s", err)
@@ -518,6 +1372,8 @@ def generate_coaching_report(
         else:
             meta["error"] = last_error[:300]
         return _fallback_report(meta["error"], player_name, swing_mode), False, meta
+    except ReportQualityError:
+        raise
     except Exception as exc:
         logger.exception("Gemini coaching report failed: %s", exc)
         meta["error"] = str(exc)[:300]
