@@ -108,6 +108,7 @@ test("login and signup run through rate-limited server routes", async () => {
 
   assert.match(loginRoute, /scope:\s*"auth-login"/);
   assert.match(signupRoute, /scope:\s*"auth-signup"/);
+  assert.match(signupRoute, /email_confirm:\s*true/);
   assert.match(loginPage, /fetch\("\/api\/auth\/login"/);
   assert.match(signupPage, /fetch\("\/api\/auth\/signup"/);
 });

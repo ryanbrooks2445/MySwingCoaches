@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -24,20 +25,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const next =
-    typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : "/dashboard";
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email: email.trim(),
+  const normalizedEmail = email.trim();
+  const trimmedName = displayName.trim();
+  const service = createServiceClient();
+
+  const { error: createError } = await service.auth.admin.createUser({
+    email: normalizedEmail,
     password,
-    options: {
-      data: { display_name: displayName.trim() },
-      emailRedirectTo: `${request.nextUrl.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
+    email_confirm: true,
+    user_metadata: { display_name: trimmedName },
   });
-  if (error) {
+
+  if (createError) {
+    const message = createError.message.toLowerCase();
+    if (message.includes("already") || message.includes("registered")) {
+      return NextResponse.json(
+        { error: "An account with this email already exists. Try logging in instead." },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ error: "We could not create that account." }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true, requiresConfirmation: !data.session });
+  const supabase = await createClient();
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password,
+  });
+  if (signInError) {
+    return NextResponse.json(
+      { error: "Account created, but sign-in failed. Try logging in." },
+      { status: 400 }
+    );
+  }
+
+  const next =
+    typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+
+  return NextResponse.json({ success: true, redirectTo: next });
 }

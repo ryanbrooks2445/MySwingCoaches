@@ -16,30 +16,26 @@ function SignupForm() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pendingLogin, setPendingLogin] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setPendingLogin(false);
     const response = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, displayName, redirectTo }),
     });
-    const data = await readApiResponse<{ requiresConfirmation?: boolean }>(response);
+    const data = await readApiResponse<{ redirectTo?: string }>(response);
     setLoading(false);
     if (!response.ok) {
       setError(data.error || "We could not create that account.");
       return;
     }
-    if (data.requiresConfirmation) {
-      setPendingLogin(true);
-      return;
-    }
-    router.push(redirectTo.startsWith("/") ? redirectTo : "/dashboard");
+    const destination =
+      data.redirectTo?.startsWith("/") ? data.redirectTo : redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+    router.push(destination);
     router.refresh();
   }
 
@@ -51,20 +47,6 @@ function SignupForm() {
           Free account · swing analyses are {PRICE_PER_ANALYSIS_DISPLAY} each
         </p>
 
-        {pendingLogin ? (
-          <div className="mt-6 space-y-4 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 p-4">
-            <p className="text-sm font-medium">Account created</p>
-            <p className="text-sm text-[var(--color-muted)]">
-              If email confirmation is on, check your inbox first. Otherwise go straight to log in.
-            </p>
-            <Link href="/login">
-              <Button className="w-full">Log in</Button>
-            </Link>
-            <p className="text-xs text-[var(--color-muted)]">
-              The confirmation link protects your account and private swing videos.
-            </p>
-          </div>
-        ) : (
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <label className="block text-sm">
             <span className="font-medium">Display name</span>
@@ -109,7 +91,6 @@ function SignupForm() {
             {loading ? "Creating account..." : "Create account"}
           </Button>
         </form>
-        )}
 
         <p className="mt-4 text-center text-sm text-[var(--color-muted)]">
           Already have an account?{" "}

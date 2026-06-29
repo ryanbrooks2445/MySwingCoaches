@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   });
   if (error) {
     return NextResponse.json(
-      { error: "Email or password is incorrect, or the email is not confirmed." },
+      { error: "Email or password is incorrect." },
       { status: 401 }
     );
   }
