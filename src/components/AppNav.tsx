@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Menu } from "lucide-react";
+import { APP_NAME } from "@/lib/brand";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,7 @@ export function AppNav() {
     <header className="border-b border-[var(--color-border)] bg-[var(--color-card)]/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
         <Link href="/dashboard" className="text-lg font-semibold tracking-tight">
-          MySwingCoaches
+          {APP_NAME}
         </Link>
         <nav className="hidden items-center gap-5 md:flex">
           {links.map((link) => (

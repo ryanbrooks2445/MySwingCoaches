@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { APP_TITLE } from "@/lib/brand";
 import { SiteFooter } from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
-  title: "MySwingCoaches — AI Golf Swing Analysis",
+  title: APP_TITLE,
   description: "Upload your swing. Get a coach-level breakdown in minutes.",
 };
 

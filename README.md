@@ -1,4 +1,4 @@
-# MySwingCoaches
+# ForeFixed
 
 AI golf swing analysis platform. Upload a swing video and get a Gemini-powered coaching report from full video analysis.
 

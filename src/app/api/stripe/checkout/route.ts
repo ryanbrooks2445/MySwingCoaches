@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { CHECKOUT_PRODUCT_NAME } from "@/lib/brand";
 import { PRICE_PER_ANALYSIS_CENTS } from "@/lib/pricing";
 import {
   appUrl,
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
           currency: "usd",
           unit_amount: unitAmount,
           product_data: {
-            name: "MySwingCoaches — Swing Analysis",
+            name: CHECKOUT_PRODUCT_NAME,
             description: "One swing upload with AI coaching feedback",
           },
         },

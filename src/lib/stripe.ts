@@ -1,4 +1,8 @@
 import Stripe from "stripe";
+import {
+  APP_NAME,
+  CHECKOUT_STATEMENT_DESCRIPTOR,
+} from "@/lib/brand";
 
 let stripeClient: Stripe | null = null;
 
@@ -28,12 +32,12 @@ export function appUrl(): string {
 
 /** Shown at the top of Stripe Checkout (overrides the Stripe account business name). */
 export function checkoutDisplayName(): string {
-  return process.env.STRIPE_CHECKOUT_DISPLAY_NAME?.trim() || "MySwingCoaches";
+  return process.env.STRIPE_CHECKOUT_DISPLAY_NAME?.trim() || APP_NAME;
 }
 
 /** Appears on the customer's card/bank statement (max 22 chars, letters required). */
 export function checkoutStatementDescriptor(): string {
   const configured = process.env.STRIPE_CHECKOUT_STATEMENT_DESCRIPTOR?.trim();
   if (configured) return configured.slice(0, 22);
-  return "MYSWINGCOACHES";
+  return CHECKOUT_STATEMENT_DESCRIPTOR;
 }
