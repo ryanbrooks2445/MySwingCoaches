@@ -324,18 +324,22 @@ export default function UploadPage() {
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
-          <Button
-            onClick={handleUpload}
-            disabled={!file || uploading || !hasCredit || !profileComplete}
-            className="w-full"
-            size="lg"
-          >
-            {uploading
-              ? "Uploading..."
-              : hasCredit
-                ? "Upload securely & analyze"
-                : `Buy credit first — ${PRICE_PER_ANALYSIS_DISPLAY}`}
-          </Button>
+          {hasCredit ? (
+            <Button
+              onClick={handleUpload}
+              disabled={!file || uploading || !profileComplete}
+              className="w-full"
+              size="lg"
+            >
+              {uploading ? "Uploading..." : "Upload securely & analyze"}
+            </Button>
+          ) : (
+            <Link href="/pricing" className="block">
+              <Button className="w-full" size="lg" type="button">
+                Buy credit — {PRICE_PER_ANALYSIS_DISPLAY}
+              </Button>
+            </Link>
+          )}
         </Card>
       </main>
     </div>
