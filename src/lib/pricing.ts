@@ -22,9 +22,11 @@ export const SWING_MODE_HINTS: Record<SwingMode, string> = {
 };
 
 export function getNextAnalysisPrice(
-  _analysesUsed?: number,
-  _analysesLimit?: number
+  analysesUsed?: number,
+  analysesLimit?: number
 ): number {
+  void analysesUsed;
+  void analysesLimit;
   return PRICE_PER_ANALYSIS;
 }
 
