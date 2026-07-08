@@ -135,13 +135,27 @@ Then visit `/coach/reviews`.
 
 ## Pricing / Stripe
 
-Plans are stored in `subscriptions`. `/pricing` creates a Stripe Checkout session when `STRIPE_SECRET_KEY` is set. The app creates the one-analysis line item dynamically from the current intro/standard price in `src/lib/pricing.ts`. Stripe must send `checkout.session.completed` events to:
+Plans are stored in `subscriptions`. `/pricing` offers:
+
+- **Per swing** — one-time Checkout (`$19.99` per upload)
+- **Unlimited annual** — recurring yearly subscription (`$99/year`, unlimited uploads)
+
+When `STRIPE_SECRET_KEY` is set, `/api/stripe/checkout` creates the appropriate Stripe Checkout session. Stripe must send webhook events to:
 
 ```text
 https://YOUR_WEB_APP_DOMAIN/api/stripe/webhook
 ```
 
-The webhook verifies `STRIPE_WEBHOOK_SECRET`, validates the paid amount and customer, then fulfills the session and credit in one idempotent database transaction.
+Required events:
+
+- `checkout.session.completed` — fulfill per-swing credits and new annual subscriptions
+- `invoice.paid` — extend annual subscription `period_end` on renewal
+- `customer.subscription.updated` — revoke access on `past_due` / `unpaid` / `canceled`
+- `customer.subscription.deleted` — revoke unlimited access
+
+Enable the **Stripe Customer Portal** in the Stripe Dashboard (Settings → Billing → Customer portal) so subscribers can manage/cancel from `/pricing`.
+
+The webhook verifies `STRIPE_WEBHOOK_SECRET`, validates the paid amount and customer for per-swing purchases, then fulfills credits or subscriptions in idempotent database transactions.
 
 ## Disclaimer
 
@@ -157,8 +171,8 @@ All reports include:
 4. Add `analysis_service_url` and `analysis_service_secret` to Supabase Vault. The secret must match Cloud Run.
 5. Confirm the `analysis-worker-every-minute` job exists in `cron.job`.
 6. Add the web variables from `.env.example` to Vercel Production and Preview.
-7. Point Stripe’s `checkout.session.completed` webhook to `https://YOUR_DOMAIN/api/stripe/webhook`.
-8. Run a Stripe test purchase, direct phone upload, completed report, duplicate webhook, and forced-failure credit restoration before enabling live mode.
+7. Point Stripe webhooks to `https://YOUR_DOMAIN/api/stripe/webhook` with the events listed in **Pricing / Stripe** above. Enable the Stripe Customer Portal.
+8. Run a Stripe test purchase (per-swing and annual), direct phone upload, completed report, duplicate webhook, subscription cancel/revoke, and forced-failure credit restoration before enabling live mode.
 
 Example Vault setup, run in the Supabase SQL editor:
 

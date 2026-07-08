@@ -1,5 +1,5 @@
 export type UserRole = "user" | "coach" | "admin";
-export type SubscriptionPlan = "free" | "player" | "serious";
+export type SubscriptionPlan = "free" | "player" | "serious" | "unlimited_annual";
 export type { SwingMode } from "@/lib/pricing";
 export type VideoStatus = "uploaded" | "processing" | "ready" | "failed";
 export type ReportStatus = "processing" | "ready" | "failed";
@@ -24,6 +24,10 @@ export interface Subscription {
   status: string;
   analyses_used: number;
   analyses_limit: number;
+  period_start?: string | null;
+  period_end?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
   coach_review_addon: boolean;
 }
 
@@ -323,6 +327,7 @@ export const PLAN_LIMITS: Record<SubscriptionPlan, number> = {
   free: 0,
   player: 0,
   serious: -1,
+  unlimited_annual: -1,
 };
 
 export {

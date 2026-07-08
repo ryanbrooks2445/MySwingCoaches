@@ -38,11 +38,14 @@ export default function LandingPage() {
               goal. {PRICE_PER_ANALYSIS_DISPLAY} per swing analysis.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link href="/signup">
+              <Link href="/signup?redirect=/upload">
                 <Button size="lg" className="w-full sm:w-auto">Analyze my swing</Button>
               </Link>
               <Link href="/pricing">
                 <Button size="lg" variant="secondary" className="w-full sm:w-auto">See pricing</Button>
+              </Link>
+              <Link href="/example">
+                <Button size="lg" variant="secondary" className="w-full sm:w-auto">See example report</Button>
               </Link>
             </div>
             <p className="mt-4 text-sm text-[var(--color-muted)]">
@@ -95,6 +98,9 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
+            <Link href="/example" className="mt-5 inline-flex text-sm font-medium text-[var(--color-accent)] hover:underline">
+              View full example report →
+            </Link>
           </Card>
         </section>
 
@@ -151,7 +157,7 @@ export default function LandingPage() {
 
         <section className="mx-auto max-w-6xl px-4 py-16 text-center">
           <h2 className="text-3xl font-semibold">Give your next range session one clear purpose.</h2>
-          <Link href="/signup" className="mt-6 inline-block">
+          <Link href="/signup?redirect=/upload" className="mt-6 inline-block">
             <Button size="lg">Get my analysis — {PRICE_PER_ANALYSIS_DISPLAY}</Button>
           </Link>
         </section>

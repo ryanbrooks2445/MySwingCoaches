@@ -11,12 +11,15 @@ import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
 import { createClient } from "@/lib/supabase/client";
 import {
+  PRICE_ANNUAL_UNLIMITED_DISPLAY,
   PRICE_PER_ANALYSIS_DISPLAY,
   SWING_MODE_HINTS,
   SWING_MODE_LABELS,
   SWING_MODES,
   type SwingMode,
 } from "@/lib/pricing";
+import { analysisCreditsRemaining } from "@/lib/subscription-access";
+import type { Subscription } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 async function videoDuration(file: File): Promise<number> {
@@ -120,20 +123,15 @@ export default function UploadPage() {
       if (!user) return;
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("analyses_limit, analyses_used, plan")
+        .select("*")
         .eq("user_id", user.id)
         .single();
       if (!sub) {
         setCredits(0);
         return;
       }
-      const used = sub.analyses_used ?? 0;
-      const limit = sub.analyses_limit ?? 0;
-      if (sub.plan === "serious" || limit === -1) {
-        setCredits("unlimited");
-        return;
-      }
-      setCredits(Math.max(0, limit - used));
+      const remaining = analysisCreditsRemaining(sub as Subscription);
+      setCredits(remaining === "unlimited" ? "unlimited" : remaining);
     }
     loadCredits();
   }, []);
@@ -233,7 +231,8 @@ export default function UploadPage() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="text-3xl font-semibold">Upload</h1>
         <p className="mt-1 text-[var(--color-muted)]">
-          {PRICE_PER_ANALYSIS_DISPLAY} per analysis · pick your mode first
+          {PRICE_PER_ANALYSIS_DISPLAY} per analysis or {PRICE_ANNUAL_UNLIMITED_DISPLAY}/year unlimited ·
+          pick your mode first
         </p>
         <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-muted)]">
           Videos are private and automatically removed after 30 days. Most reports are ready in

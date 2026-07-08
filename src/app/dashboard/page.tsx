@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { createClient } from "@/lib/supabase/server";
-import { analysisCreditsRemaining } from "@/lib/subscription";
+import { analysisCreditsRemaining } from "@/lib/subscription-access";
 import { getNextAnalysisPriceDisplay } from "@/lib/pricing";
 import { getReportFocusLabel } from "@/lib/coaching";
 import type { SwingReport } from "@/lib/types";

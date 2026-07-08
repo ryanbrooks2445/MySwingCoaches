@@ -16,7 +16,7 @@ export function PublicHeader() {
           <Link href="/login" className="whitespace-nowrap text-sm">
             Log in
           </Link>
-          <Link href="/signup">
+          <Link href="/signup?redirect=/upload">
             <Button size="sm" className="whitespace-nowrap">Get started</Button>
           </Link>
         </nav>

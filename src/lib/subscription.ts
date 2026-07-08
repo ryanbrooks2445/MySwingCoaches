@@ -1,6 +1,15 @@
 import { createServiceClient } from "@/lib/supabase/admin";
-import { getNextAnalysisPriceDisplay } from "@/lib/pricing";
-import { PLAN_LIMITS, type CoachingContent, type Subscription } from "@/lib/types";
+import {
+  analysisCreditsRemaining,
+  noCreditsMessage,
+} from "@/lib/subscription-access";
+import type { CoachingContent, Subscription } from "@/lib/types";
+
+export {
+  analysisCreditsRemaining,
+  hasActiveAnnualSubscription,
+  hasUnlimitedAccess,
+} from "@/lib/subscription-access";
 
 export async function getSubscription(userId: string): Promise<Subscription | null> {
   const supabase = createServiceClient();
@@ -12,13 +21,6 @@ export async function getSubscription(userId: string): Promise<Subscription | nu
   return data;
 }
 
-export function analysisCreditsRemaining(sub: Subscription): number | "unlimited" {
-  const planLimit = PLAN_LIMITS[sub.plan as keyof typeof PLAN_LIMITS];
-  const limit = planLimit === -1 ? -1 : sub.analyses_limit;
-  if (limit === -1) return "unlimited";
-  return Math.max(0, limit - sub.analyses_used);
-}
-
 export async function canRunAnalysis(userId: string): Promise<{ allowed: boolean; reason?: string }> {
   const sub = await getSubscription(userId);
   if (!sub) return { allowed: false, reason: "No account found" };
@@ -26,10 +28,9 @@ export async function canRunAnalysis(userId: string): Promise<{ allowed: boolean
   const remaining = analysisCreditsRemaining(sub);
   if (remaining === "unlimited") return { allowed: true };
   if (remaining < 1) {
-    const price = getNextAnalysisPriceDisplay(sub.analyses_used, sub.analyses_limit);
     return {
       allowed: false,
-      reason: `No analyses left. Purchase one for ${price} on the pricing page.`,
+      reason: noCreditsMessage(sub),
     };
   }
   return { allowed: true };

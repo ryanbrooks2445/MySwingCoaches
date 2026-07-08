@@ -2,6 +2,14 @@ export const PRICE_PER_ANALYSIS = 19.99;
 export const PRICE_PER_ANALYSIS_DISPLAY = "$19.99";
 export const PRICE_PER_ANALYSIS_CENTS = 1999;
 
+export const PRICE_ANNUAL_UNLIMITED = 99;
+export const PRICE_ANNUAL_UNLIMITED_DISPLAY = "$99";
+export const PRICE_ANNUAL_UNLIMITED_CENTS = 9900;
+
+export const PRODUCT_SWING_UPLOAD = "swing_upload" as const;
+export const PRODUCT_ANNUAL_UNLIMITED = "annual_unlimited" as const;
+export type CheckoutProduct = typeof PRODUCT_SWING_UPLOAD | typeof PRODUCT_ANNUAL_UNLIMITED;
+
 /** @deprecated Use PRICE_PER_ANALYSIS — kept for existing imports */
 export const PRICE_FIRST_ANALYSIS = PRICE_PER_ANALYSIS;
 export const PRICE_FIRST_ANALYSIS_DISPLAY = PRICE_PER_ANALYSIS_DISPLAY;

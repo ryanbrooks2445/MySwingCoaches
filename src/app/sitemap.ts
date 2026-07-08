@@ -5,6 +5,7 @@ const baseUrl = "https://forefixed.com";
 const publicRoutes = [
   "",
   "/pricing",
+  "/example",
   "/signup",
   "/login",
   "/reset-password",
