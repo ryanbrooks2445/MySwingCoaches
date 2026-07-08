@@ -6,15 +6,25 @@ import { Suspense } from "react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { readApiResponse } from "@/lib/api-response";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/dashboard";
+  const urlError = searchParams.get("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    urlError === "oauth_failed"
+      ? "Google sign-in was cancelled or failed. Please try again."
+      : urlError === "expired_link"
+        ? "That sign-in link has expired. Please try again."
+        : urlError === "invalid_link"
+          ? "That sign-in link was invalid. Please try again."
+          : null
+  );
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -41,7 +51,18 @@ function LoginForm() {
       <Card className="w-full max-w-md">
         <h1 className="text-2xl font-semibold">Log in</h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">Welcome back to ForeFixed</p>
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+
+        <div className="mt-6">
+          <GoogleSignInButton redirectTo={redirectTo} label="Log in with Google" />
+        </div>
+
+        <div className="my-6 flex items-center gap-3 text-xs text-[var(--color-muted)]">
+          <span className="h-px flex-1 bg-[var(--color-border)]" />
+          or
+          <span className="h-px flex-1 bg-[var(--color-border)]" />
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block text-sm">
             <span className="font-medium">Email</span>
           <input

@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { CheckCircle2, Lock, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { readApiResponse } from "@/lib/api-response";
 import { PRICE_ANNUAL_UNLIMITED_DISPLAY, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
 
@@ -58,7 +59,17 @@ function SignupForm() {
               {PRICE_ANNUAL_UNLIMITED_DISPLAY}/year unlimited.
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div className="mt-6">
+              <GoogleSignInButton redirectTo={redirectTo} label="Sign up with Google" />
+            </div>
+
+            <div className="my-6 flex items-center gap-3 text-xs text-[var(--color-muted)]">
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+              or
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
               <label className="block text-sm">
                 <span className="font-medium">Display name</span>
                 <input

@@ -8,9 +8,93 @@
   --color-card: #ffffff;
   --color-accent: #16a34a;
   --color-accent-muted: #dcfce7;
+  --color-accent-deep: #14532d;
   --color-danger: #dc2626;
   --color-warning: #d97706;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-sand: #f4efe7;
+  --color-sand-deep: #ece3d5;
+
+  /* High-energy brand accents (golf sunrise: emerald → lime → amber) */
+  --color-lime: #4ade80;
+  --color-emerald: #10b981;
+  --color-amber: #f59e0b;
+  --color-ink: #041712;
+  --color-ink-2: #06251a;
+
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-float-slow: float 11s ease-in-out infinite;
+  --animate-drift: drift 18s ease-in-out infinite;
+  --animate-pulse-glow: pulse-glow 2.6s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-marquee: marquee 32s linear infinite;
+  --animate-gradient: gradient-pan 8s ease infinite;
+  --animate-spin-slow: spin 14s linear infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(28px, -22px, 0) scale(1.06); }
+  66% { transform: translate3d(-22px, 18px, 0) scale(0.96); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.45); }
+  50% { box-shadow: 0 0 34px 6px rgba(74, 222, 128, 0.28); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/*
+ * Guaranteed palette. Tailwind v4 tree-shakes @theme variables and only emits
+ * those referenced by literal var() in raw CSS, so colors used solely inside
+ * arbitrary utilities (e.g. bg-[var(--color-ink)]) would otherwise resolve to
+ * empty. Declaring them in a raw :root block keeps every token available.
+ */
+:root {
+  --color-background: #fafafa;
+  --color-foreground: #0a0a0a;
+  --color-muted: #737373;
+  --color-border: #e5e5e5;
+  --color-card: #ffffff;
+  --color-accent: #16a34a;
+  --color-accent-muted: #dcfce7;
+  --color-accent-deep: #14532d;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  --color-sand: #f4efe7;
+  --color-sand-deep: #ece3d5;
+  --color-lime: #4ade80;
+  --color-emerald: #10b981;
+  --color-amber: #f59e0b;
+  --color-ink: #041712;
+  --color-ink-2: #06251a;
 }
 
 body {
@@ -26,4 +110,72 @@ select,
 textarea,
 summary {
   outline-color: var(--color-accent);
+}
+
+/* Animated gradient text for hero words */
+.text-gradient {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-emerald),
+    var(--color-lime),
+    var(--color-amber),
+    var(--color-lime),
+    var(--color-emerald)
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: var(--animate-gradient);
+}
+
+/* Gradient border card (glow ring) */
+.ring-gradient {
+  position: relative;
+  isolation: isolate;
+}
+.ring-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg, var(--color-lime), var(--color-emerald), var(--color-amber));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  z-index: -1;
+}
+
+/* Scroll reveal — hidden until observed, always visible if JS/motion off */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Grain/noise-free glow blob helper */
+.blob {
+  border-radius: 9999px;
+  filter: blur(64px);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  .text-gradient,
+  .blob,
+  .reveal {
+    animation: none !important;
+    transition: none !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
