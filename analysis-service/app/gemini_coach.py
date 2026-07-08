@@ -50,17 +50,41 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
-OBSERVATION_SYSTEM = """You are a biomechanics observer. Your ONLY job is to describe what you see in this golf swing video.
+FOREFIX_ELITE_BIOMECHANICS_SYSTEM = """You are ForeFix's elite PGA biomechanics coach: a tour-level swing analyst, motor-learning coach, and visual evidence auditor.
+
+Operate like a coach who has the player's video open frame-by-frame. Your job is to extract dense, specific mechanical truth from the visual evidence, not to write generic golf tips.
+
+NON-NEGOTIABLE VISUAL CHECKPOINTS:
+- Camera/read quality: identify face-on vs down-the-line vs unclear, and state which claims are limited by that angle.
+- Address posture: evaluate spine tilt, hip hinge, knee flex, weight balance, distance from ball, hand position, shoulder/hip alignment, and whether the body has room to rotate.
+- Visual lines: assess head line, spine line, pelvis/hip line, shoulder line, knee line, lead-arm structure, shaft line, hand path, clubhead path, swing plane, low-point window, and balance/pressure shift.
+- Takeaway and backswing: describe clubhead relative to hands, shaft pitch, wrist set, trail elbow fold, shoulder turn, hip turn, depth, width, arm structure, and clubface angle relative to lead forearm/shaft.
+- Top and transition: identify whether the club is laid off/across/neutral, whether the lead arm collapses, how pressure shifts, and whether the lower body starts before the arms.
+- Downswing clearing: evaluate lead-hip clearing, pelvis rotation, chest rotation, trail elbow position, shaft shallowing/steepening, hand path, head level, early extension, and whether the player creates space through impact.
+- Impact window: note shaft lean, face/path relationship, release pattern, low point, handle location, head stability, lead-side bracing, and what is estimated rather than directly visible.
+- Finish: balance, rotation completion, recoil, and whether the finish confirms or contradicts the earlier sequence.
+
+QUALITY BAR:
+- Be exhaustive within the requested schema. Prefer concrete visible evidence over labels.
+- Do not say "good posture", "solid swing", "needs consistency", or similar filler unless you immediately attach the exact visible reason.
+- If a phase is visible, include enough detail that another coach could picture the frame without seeing it.
+- If a detail is not visible, mark it as not visible instead of guessing.
+- Separate evidence from coaching conclusions unless the current call explicitly asks for diagnosis or coaching."""
+
+
+OBSERVATION_SYSTEM = FOREFIX_ELITE_BIOMECHANICS_SYSTEM + """
+
+For this call, you are in VIDEO OBSERVATION MODE. Your ONLY job is to describe what you see in this golf swing video.
 
 DO NOT diagnose. DO NOT suggest fixes. DO NOT pick a report mode.
 DO NOT use words like "fault", "issue", "problem", "fix", or "should".
 
-Describe ONLY what is physically visible, phase by phase:
+Describe ONLY what is physically visible, phase by phase. Be dense and specific:
 
 For each phase (Setup, Takeaway, Backswing, Transition, Downswing, Impact, Finish):
-- What the club is doing
-- What the body is doing
-- What is NOT visible or unclear due to camera angle
+- club: shaft/clubface/clubhead/hand-path details, including face angle where visible
+- body: posture, lines, rotation, clearing, pressure shift, arm structure, head movement, balance
+- not_visible: exact visual limitations from camera angle, blur, framing, or phase confidence
 
 Return JSON only:
 {
@@ -77,6 +101,21 @@ Return JSON only:
   "video_usability": "good | acceptable | poor",
   "usability_note": "..."
 }"""
+
+
+COACHING_SYSTEM = FOREFIX_ELITE_BIOMECHANICS_SYSTEM + """
+
+For this call, you are writing the paid ForeFix coaching output.
+Use locked video evidence as the authority. Write like an elite coach who is both precise and useful: specific cause-effect chain, no filler, no vague encouragement, no invented ball flight.
+Maximize information density. Every sentence should either name what was visible, explain why it matters biomechanically, or give a concrete feel/drill/checkpoint.
+Do not expose hidden reasoning. Provide the final evidence-backed assessment only."""
+
+
+DIAGNOSTIC_SYSTEM = FOREFIX_ELITE_BIOMECHANICS_SYSTEM + """
+
+For this call, you are a strict diagnostic grading engine.
+Grade only from supplied observations and player profile. Prefer the earliest visible cause over downstream symptoms, but never invent a cause that is absent from the observations.
+Return JSON only."""
 
 
 _CALL3_USER_FACING_RULES = """USER-FACING COPY RULES — FILM FIRST:
@@ -164,7 +203,16 @@ OUTPUT — Return JSON only matching the coaching schema:
 - mode: copy locked report_mode
 - missing, root, secondary, symptom, chain: from locked grading only
 - evidence: 5-8 strings — each elaborates one Call 1 phase (Setup through Finish) in plain language
-- checkpoints: "Phase: grade|observation" aligned with Call 2
+- checkpoints: 7 distinct strings, one per phase, using exact phase-prefixed pipe format
+  "Setup: [biomechanical detail] | optimal|compensation|constraint|not_visible | visible observation"
+  Use lowercase grades and write "compensation" for Call 2 Compensating grades.
+  Include Setup, Takeaway, Backswing, Transition, Downswing, Impact, Finish.
+  ABSOLUTE REQUIREMENT: checkpoints must contain a minimum of 3 distinct string items.
+  ABSOLUTE REQUIREMENT: checkpoints must include strings that begin with these exact case-sensitive prefixes:
+  - "Setup: [biomechanical detail]"
+  - "Backswing: [biomechanical detail]"
+  - "Impact: [biomechanical detail]"
+  Replace [biomechanical detail] with the specific body/club detail for that phase, but keep the exact phase prefix and colon.
 - letter_open, strengths, flaws, fixes: keep brief and film-specific; skip generic coach letter filler
 - confidence: from locked grading
 
@@ -280,6 +328,8 @@ def _audit_with_revisions(
     trace_id: str | None,
     report_id: str | None,
     user_id: str | None,
+    locked_observation: GeminiReportOut | None = None,
+    locked_grading: GeminiReportOut | None = None,
     raw_attempts: list[dict] | None = None,
 ) -> CoachingReportSchema:
     """Call 3 — text-only coaching report with quality audit and optional revision loop."""
@@ -296,6 +346,8 @@ def _audit_with_revisions(
     revision_parts_base = list(content_parts)
 
     for revision in range(max_revisions + 1):
+        if locked_observation is not None and locked_grading is not None:
+            report = apply_film_first_report(report, locked_observation, locked_grading)
         report = _apply_phase_limitations(report, phase_map)
         try:
             audit_report_quality(
@@ -766,9 +818,12 @@ def _call_narrative_gemini(
         ],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
+            system_instruction=COACHING_SYSTEM,
             temperature=settings.gemini_temperature,
             top_p=settings.gemini_top_p,
             max_output_tokens=settings.gemini_max_output_tokens,
+            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+            thinking_config=types.ThinkingConfig(thinking_budget=-1),
         ),
     )
     text = response.text or "{}"
@@ -889,9 +944,12 @@ def _call_observation_gemini(
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_json_schema=GEMINI_RESPONSE_JSON_SCHEMA,
+            system_instruction=OBSERVATION_SYSTEM,
             temperature=settings.gemini_temperature,
             top_p=settings.gemini_top_p,
             max_output_tokens=settings.gemini_max_output_tokens,
+            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+            thinking_config=types.ThinkingConfig(thinking_budget=-1),
         ),
     )
     text = response.text or "{}"
@@ -1025,9 +1083,11 @@ def _call_diagnostic_gemini(
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_json_schema=DIAGNOSTIC_RESPONSE_JSON_SCHEMA,
+                system_instruction=DIAGNOSTIC_SYSTEM,
                 temperature=settings.gemini_temperature,
                 top_p=settings.gemini_top_p,
                 max_output_tokens=settings.gemini_max_output_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=-1),
             ),
         )
         text = response.text or "{}"
@@ -1138,9 +1198,12 @@ def _call_gemini(
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_json_schema=GEMINI_COACHING_SCHEMA,
+        system_instruction=COACHING_SYSTEM,
         temperature=settings.gemini_temperature,
         top_p=settings.gemini_top_p,
         max_output_tokens=settings.gemini_max_output_tokens,
+        media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+        thinking_config=types.ThinkingConfig(thinking_budget=-1),
     )
     try:
         response = client.models.generate_content(
@@ -1258,8 +1321,12 @@ def generate_coaching_report(
                 types.Part.from_text(
                     text=(
                         f"Watch the {mode_label} video. Use the PHASE EVIDENCE PACKET and verified stills only "
-                        "to describe what you see in each phase. Describe the club, the body, and any camera "
-                        "limitations. Do NOT diagnose, coach, or grade. Return the requested JSON only."
+                        "to describe what you see in each phase. Inspect address posture, visual body lines, "
+                        "takeaway shaft/clubface, top-of-backswing arm and face structure, transition sequencing, "
+                        "downswing hip/chest clearing, shaft plane, head level, impact-window geometry, and finish "
+                        "balance. Describe the club, the body, and any camera limitations with enough detail that "
+                        "another coach could reconstruct the motion. Do NOT diagnose, coach, or grade. Return the "
+                        "requested JSON only."
                     )
                 )
             )
@@ -1349,9 +1416,10 @@ def generate_coaching_report(
                     trace_id=trace_id,
                     report_id=report_id,
                     user_id=user_id,
+                    locked_observation=observation,
+                    locked_grading=grading,
                     raw_attempts=meta["raw_responses"],
                 )
-                report = apply_film_first_report(report, observation, grading)
                 meta["model_used"] = model
                 return report, True, meta
             except ReportQualityError as exc:

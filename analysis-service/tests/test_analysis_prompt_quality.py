@@ -4,6 +4,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.gemini_coach import (
+    COACHING_SYSTEM,
+    DIAGNOSTIC_SYSTEM,
+    FOREFIX_ELITE_BIOMECHANICS_SYSTEM,
     OBSERVATION_SYSTEM,
     _apply_narrative_response,
     _audit_with_revisions,
@@ -12,6 +15,7 @@ from app.gemini_coach import (
     _build_prompt,
     _call_gemini,
     _call_narrative_gemini,
+    _call_observation_gemini,
     _dynamic_priority_guard,
     _preserve_preanalyzed_diagnosis,
 )
@@ -84,6 +88,12 @@ def test_observation_system_is_observer_only() -> None:
     lower_prompt = OBSERVATION_SYSTEM.lower()
 
     for phrase in (
+        "elite pga biomechanics coach",
+        "address posture",
+        "visual lines",
+        "backswing",
+        "clubface angle",
+        "downswing clearing",
         "your only job is to describe what you see",
         "do not diagnose",
         "do not suggest fixes",
@@ -128,6 +138,41 @@ def test_call3_prompt_requires_coaching_language() -> None:
 
     for phrase in ("do not diagnose", "do not suggest fixes", "your only job is to describe"):
         assert phrase not in lower_prompt
+
+
+def test_call3_prompt_requires_parser_safe_checkpoint_prefixes() -> None:
+    prompt = _build_prompt(
+        swing_mode="full_swing",
+        history_summary=None,
+        player_name="Jordan",
+        swing_number=1,
+        player_context=None,
+    )
+
+    assert "absolute requirement" in prompt.lower()
+    assert "minimum of 3 distinct string items" in prompt
+    assert "Setup: [biomechanical detail]" in prompt
+    assert "Backswing: [biomechanical detail]" in prompt
+    assert "Impact: [biomechanical detail]" in prompt
+
+
+def test_system_instructions_force_dense_evidence_based_coaching() -> None:
+    lower_base = FOREFIX_ELITE_BIOMECHANICS_SYSTEM.lower()
+    lower_coaching = COACHING_SYSTEM.lower()
+    lower_diagnostic = DIAGNOSTIC_SYSTEM.lower()
+
+    for phrase in (
+        "frame-by-frame",
+        "address posture",
+        "visual lines",
+        "clubface angle",
+        "lead-hip clearing",
+        "maximize information density",
+    ):
+        assert phrase in lower_base or phrase in lower_coaching
+
+    assert "locked video evidence" in lower_coaching
+    assert "return json only" in lower_diagnostic
 
 
 def test_call3_prompt_includes_physical_boundaries_when_provided() -> None:
@@ -384,6 +429,39 @@ def test_call_gemini_preserves_raw_response_before_conversion() -> None:
     assert raw_attempts[0]["raw_text"] == raw_text
     assert raw_attempts[0]["parsed_json"]["root"] == "Hands move out before the body clears."
     assert "pga_analysis" in raw_attempts[0]["converted_report"]
+
+
+def test_observation_call_uses_system_instruction_and_high_resolution_media() -> None:
+    raw_text = """
+    {
+      "observations": {
+        "setup": {"club": "Club visible.", "body": "Athletic posture.", "not_visible": ""},
+        "takeaway": {"club": "Clubhead visible.", "body": "Body turns.", "not_visible": ""},
+        "backswing": {"club": "Face visible.", "body": "Lead arm visible.", "not_visible": ""},
+        "transition": {"club": "Shaft visible.", "body": "Lower body starts.", "not_visible": ""},
+        "downswing": {"club": "Club approaches.", "body": "Hips clear.", "not_visible": ""},
+        "impact": {"club": "Impact estimated.", "body": "Lead side braces.", "not_visible": "Ball hidden."},
+        "finish": {"club": "Club exits.", "body": "Balanced finish.", "not_visible": ""}
+      },
+      "camera_angle": "down-the-line",
+      "video_usability": "good",
+      "usability_note": "Clear."
+    }
+    """
+    settings = MagicMock()
+    settings.gemini_temperature = 0.25
+    settings.gemini_top_p = 0.9
+    settings.gemini_max_output_tokens = 12000
+    client = MagicMock()
+    client.models.generate_content.return_value.text = raw_text
+
+    with patch("app.gemini_coach.get_settings", return_value=settings):
+        _call_observation_gemini(client, "gemini-2.5-flash", [])
+
+    config = client.models.generate_content.call_args.kwargs["config"]
+    assert config.system_instruction == OBSERVATION_SYSTEM
+    assert str(config.media_resolution).endswith("MEDIA_RESOLUTION_HIGH")
+    assert config.thinking_config.thinking_budget == -1
 
 
 def test_apply_narrative_response_replaces_compact_report_with_full_coach_read() -> None:

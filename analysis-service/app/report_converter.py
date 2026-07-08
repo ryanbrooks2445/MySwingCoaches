@@ -1509,7 +1509,6 @@ def apply_film_first_report(
             "main_fix": main_fix,
             "tips_and_feels": report.tips_and_feels,
             "advanced_details": adv,
-            "feel_blueprint": None,
             "coach_verdict": coach_verdict,
         }
     )
@@ -1553,7 +1552,7 @@ def _observer_grade_checkpoints(out: GeminiReportOut) -> list[DiagnosticCheckpoi
     for phase, item in out.grades.model_dump().items():
         checkpoints.append(
             DiagnosticCheckpointGrade(
-                checkpoint=phase.capitalize(),
+                checkpoint=f"{phase.capitalize()}:",
                 grade=_GRADE_MAP.get(str(item.get("grade")), "not_visible"),  # type: ignore[arg-type]
                 observation=str(item.get("reason") or ""),
             )
