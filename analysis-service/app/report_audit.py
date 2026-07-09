@@ -241,6 +241,16 @@ def _user_facing_covers_any(report: CoachingReportSchema, terms: tuple[str, ...]
         report.next_swing_check,
         " ".join(report.tips_and_feels),
     ]
+    for priority in report.priority_fixes:
+        parts.extend(
+            [
+                priority.title,
+                priority.issue,
+                priority.why_first,
+                " ".join(priority.body_feels),
+                " ".join(priority.space_feels),
+            ]
+        )
     letter = report.feel_blueprint
     if letter:
         parts.extend(

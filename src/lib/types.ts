@@ -169,6 +169,17 @@ export interface DrillSummary {
   how_to_do_it: string;
 }
 
+export interface PrioritizedFeelFix {
+  rank: number;
+  phase: string;
+  title: string;
+  issue: string;
+  why_first: string;
+  body_feels: string[];
+  space_feels: string[];
+  drill?: DrillSummary | null;
+}
+
 export interface DiagnosticCheckpointGrade {
   checkpoint: string;
   grade: "optimal" | "compensation" | "constraint" | "not_visible";
@@ -213,6 +224,7 @@ export interface SimplifiedSwingReport {
   next_swing_check: string;
   advanced_details: AdvancedDetails;
   coach_verdict?: CoachVerdict | null;
+  priority_fixes?: PrioritizedFeelFix[];
 }
 
 export interface CoachingContent {
@@ -225,6 +237,7 @@ export interface CoachingContent {
   coach_verdict?: CoachVerdict | null;
   advanced_details?: AdvancedDetails;
   feel_blueprint?: FeelBlueprintDiagnostic;
+  priority_fixes?: PrioritizedFeelFix[];
   /** @deprecated Legacy reports only */
   diagnostic?: DiagnosticTruth;
   blueprint?: KinestheticBlueprint;

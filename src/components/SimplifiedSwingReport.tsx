@@ -1,6 +1,7 @@
 "use client";
 
 import { DrillVideoEmbed } from "@/components/DrillVideoEmbed";
+import { PrioritizedFeelsHero } from "@/components/PrioritizedFeelsHero";
 import { ReportMarkdown } from "@/components/ReportMarkdown";
 import { Card } from "@/components/ui/Card";
 import {
@@ -74,10 +75,19 @@ export function SimplifiedSwingReport({
   const showGoodVsWork =
     !showCameraVerified && (working.length > 0 || work.length > 0);
   const showPhaseCheckpoints = showPhaseCapture && visibleCheckpoints.length > 0;
+  const hasPriorityHero = (report.priority_fixes?.length ?? 0) >= 2;
 
   return (
     <div className="mt-8 space-y-8">
-      {bestFix && bestFix !== "—" && (
+      {hasPriorityHero && (
+        <PrioritizedFeelsHero
+          priorities={report.priority_fixes!}
+          drillVideoUrl={drillVideoUrl}
+          drillVideoTitle={drillVideoTitle}
+        />
+      )}
+
+      {!hasPriorityHero && bestFix && bestFix !== "—" && (
         <section className="overflow-hidden rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-sm">
           <div className="px-5 py-5 sm:px-6">
             <BlockHeader emoji="🎯" title="The Best Fix" />
@@ -148,7 +158,7 @@ export function SimplifiedSwingReport({
         </section>
       )}
 
-      {primaryFeel && (
+      {primaryFeel && !hasPriorityHero && (
         <section className="space-y-3">
           <BlockHeader emoji="💡" title="One Feel" />
           <Card>
@@ -160,7 +170,7 @@ export function SimplifiedSwingReport({
         </section>
       )}
 
-      {primaryDrill && (
+      {primaryDrill && !hasPriorityHero && (
         <section className="space-y-3">
           <BlockHeader
             emoji="🛠️"

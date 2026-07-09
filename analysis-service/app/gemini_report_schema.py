@@ -96,6 +96,11 @@ class GeminiReportOut(BaseModel):
     fix3: str = ""
     body_cue: str = ""
     space_cue: str = ""
+    pri1: str = ""
+    pri2: str = ""
+    pri3: str = ""
+    pri4: str = ""
+    pri5: str = ""
 
 
 _LETTER_STRING_FIELDS = (
@@ -115,6 +120,8 @@ _LETTER_STRING_FIELDS = (
     "body_cue",
     "space_cue",
 )
+
+_PRIORITY_STRING_FIELDS = ("pri1", "pri2", "pri3", "pri4", "pri5")
 
 _PHASE_OBSERVATION_SCHEMA = {
     "type": "object",
@@ -212,6 +219,11 @@ GEMINI_COACHING_SCHEMA: dict = {
         "fix3": {"type": "string"},
         "body_cue": {"type": "string"},
         "space_cue": {"type": "string"},
+        "pri1": {"type": "string"},
+        "pri2": {"type": "string"},
+        "pri3": {"type": "string"},
+        "pri4": {"type": "string"},
+        "pri5": {"type": "string"},
     },
     "required": [
         "greeting",
@@ -243,6 +255,9 @@ GEMINI_COACHING_SCHEMA: dict = {
         "fix2",
         "body_cue",
         "space_cue",
+        "pri1",
+        "pri2",
+        "pri3",
     ],
 }
 

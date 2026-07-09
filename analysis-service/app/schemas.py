@@ -149,6 +149,28 @@ class DrillSummary(BaseModel):
     how_to_do_it: str = Field(description="1-2 sentences — reps, setup, pass/fail")
 
 
+class PrioritizedFeelFix(BaseModel):
+    rank: int = Field(ge=1, le=5, description="1 = root cause; higher ranks are downstream chain links")
+    phase: str = Field(description="Swing phase e.g. Setup, Takeaway, Backswing")
+    title: str = Field(description="Short fix label tied to what film showed")
+    issue: str = Field(description="What the camera verified at this phase")
+    why_first: str = Field(description="Why this ranks here in the cause-effect chain")
+    body_feels: list[str] = Field(
+        min_length=1,
+        max_length=3,
+        description="Tactile body cues — start with Feel when natural",
+    )
+    space_feels: list[str] = Field(
+        min_length=1,
+        max_length=3,
+        description="Spatial awareness cues — room, path, club position",
+    )
+    drill: DrillSummary | None = Field(
+        default=None,
+        description="Optional drill matched to this priority",
+    )
+
+
 class DiagnosticCheckpointGrade(BaseModel):
     checkpoint: str = Field(
         description="Short label e.g. 'Setup: weight on heels' or 'Backswing: arm lift'"
@@ -246,6 +268,11 @@ class CoachingReportSchema(BaseModel):
     feel_blueprint: FeelBlueprintDiagnostic | None = Field(
         default=None,
         description="Full paid coach letter — strengths, missing-piece chain, ceilings, and pro fixes.",
+    )
+    priority_fixes: list[PrioritizedFeelFix] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Ranked coaching priorities — root cause first, each with multiple body and space feels.",
     )
     blueprint: KinestheticBlueprint
     roadmap: AccountabilityPlan

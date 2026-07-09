@@ -20,6 +20,7 @@ from app.schemas import (
     FeelBlueprintDiagnostic,
     KinestheticBlueprint,
     MilestoneBlock,
+    PrioritizedFeelFix,
     ProFix,
 )
 
@@ -670,6 +671,234 @@ def _parse_pro_fix_pipe(raw: str) -> ProFix | None:
     return None
 
 
+_PHASE_RANK_ORDER = {
+    "setup": 1,
+    "address": 1,
+    "takeaway": 2,
+    "backswing": 3,
+    "top": 3,
+    "transition": 4,
+    "downswing": 5,
+    "impact": 6,
+    "finish": 7,
+}
+
+
+def _split_compound_feels(raw: str) -> list[str]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    if ";;" in text:
+        return [part.strip() for part in text.split(";;") if part.strip()]
+    if ";" in text:
+        return [part.strip() for part in text.split(";") if part.strip()]
+    return [text]
+
+
+def _parse_priority_pipe(raw: str) -> PrioritizedFeelFix | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    parts = [part.strip() for part in text.split("|")]
+    if len(parts) < 5:
+        return None
+    try:
+        rank = int(parts[0])
+    except ValueError:
+        rank = 1
+    phase = parts[1]
+    title = parts[2]
+    issue = parts[3]
+    why_first = parts[4]
+    body_feels = _split_compound_feels(parts[5]) if len(parts) > 5 else []
+    space_feels = _split_compound_feels(parts[6]) if len(parts) > 6 else []
+    drill: DrillSummary | None = None
+    if len(parts) >= 10 and any(parts[7:10]):
+        drill = DrillSummary(
+            name=parts[7],
+            why_it_helps=parts[8],
+            how_to_do_it=parts[9],
+        )
+    if not body_feels:
+        body_feels = [why_first]
+    if not space_feels:
+        space_feels = [issue]
+    return PrioritizedFeelFix(
+        rank=max(1, min(5, rank)),
+        phase=phase,
+        title=title,
+        issue=issue,
+        why_first=why_first,
+        body_feels=body_feels[:3],
+        space_feels=space_feels[:3],
+        drill=drill if drill and drill.name.strip() else None,
+    )
+
+
+def _infer_phase_label(text: str) -> str:
+    lowered = (text or "").strip().lower()
+    for key, label in (
+        ("setup", "Setup"),
+        ("address", "Setup"),
+        ("takeaway", "Takeaway"),
+        ("backswing", "Backswing"),
+        ("transition", "Transition"),
+        ("downswing", "Downswing"),
+        ("impact", "Impact"),
+        ("finish", "Finish"),
+    ):
+        if key in lowered:
+            return label
+    return "Swing"
+
+
+def _checkpoint_phase_rank(checkpoint: DiagnosticCheckpointGrade) -> int:
+    label = (checkpoint.checkpoint or "").strip().lower()
+    for key, rank in _PHASE_RANK_ORDER.items():
+        if label.startswith(key):
+            return rank
+    return 99
+
+
+def _fallback_priority_fixes(
+    out: GeminiReportOut,
+    drills: list[DrillSummary],
+) -> list[PrioritizedFeelFix]:
+    priorities: list[PrioritizedFeelFix] = []
+
+    flaws = [
+        bullet
+        for raw in (out.flaw1, out.flaw2, out.flaw3)
+        if (bullet := _parse_bullet_pipe(raw)) is not None
+    ]
+    fixes = [
+        fix
+        for raw in (out.fix1, out.fix2, out.fix3)
+        if (fix := _parse_pro_fix_pipe(raw)) is not None
+    ]
+
+    for index, flaw in enumerate(flaws[:5]):
+        fix = fixes[index] if index < len(fixes) else None
+        drill = drills[index] if index < len(drills) else None
+        body_feels = []
+        space_feels = []
+        if index == 0 and out.body_cue.strip():
+            body_feels.append(_polish_cue(out.body_cue))
+        if index == 0 and out.space_cue.strip():
+            space_feels.append(_polish_cue(out.space_cue))
+        if fix:
+            body_feels.append(f"{fix.title}: {fix.detail}")
+        for tip in out.tips:
+            polished = _polish_cue(tip)
+            if polished and polished not in body_feels and polished not in space_feels:
+                if len(body_feels) < 2:
+                    body_feels.append(polished)
+                elif len(space_feels) < 2:
+                    space_feels.append(polished)
+        if not body_feels:
+            body_feels = [flaw.detail]
+        if not space_feels:
+            space_feels = [fix.detail if fix else flaw.detail]
+        why_first = (
+            "Root cause on film — later compensations trace back here."
+            if index == 0
+            else "Downstream link in the cause-effect chain from earlier phases."
+        )
+        priorities.append(
+            PrioritizedFeelFix(
+                rank=index + 1,
+                phase=_infer_phase_label(flaw.title),
+                title=flaw.title,
+                issue=flaw.detail,
+                why_first=why_first,
+                body_feels=body_feels[:3],
+                space_feels=space_feels[:3],
+                drill=drill,
+            )
+        )
+
+    if len(priorities) >= 2:
+        return priorities[:5]
+
+    checkpoints = [
+        _parse_checkpoint(raw)
+        for raw in out.checkpoints
+        if raw.strip()
+    ]
+    constraint_checkpoints = sorted(
+        [
+            item
+            for item in checkpoints
+            if item.grade in ("constraint", "compensation")
+            and (item.observation or "").strip()
+        ],
+        key=_checkpoint_phase_rank,
+    )
+    for index, checkpoint in enumerate(constraint_checkpoints[:5]):
+        phase = _infer_phase_label(checkpoint.checkpoint)
+        title = checkpoint.checkpoint.split(":", 1)[0].strip() or phase
+        issue = checkpoint.observation.strip()
+        body_feels = [_polish_cue(out.body_cue)] if out.body_cue.strip() else [issue]
+        space_feels = [_polish_cue(out.space_cue)] if out.space_cue.strip() else [issue]
+        drill = drills[index] if index < len(drills) else None
+        priorities.append(
+            PrioritizedFeelFix(
+                rank=index + 1,
+                phase=phase,
+                title=title,
+                issue=issue,
+                why_first=(
+                    "Earliest visible constraint on film."
+                    if index == 0
+                    else "Compensation that follows earlier setup or takeaway limits."
+                ),
+                body_feels=body_feels[:3],
+                space_feels=space_feels[:3],
+                drill=drill,
+            )
+        )
+
+    if priorities:
+        return priorities[:5]
+
+    if out.main_fix.strip():
+        return [
+            PrioritizedFeelFix(
+                rank=1,
+                phase="Swing",
+                title="Priority fix",
+                issue=out.main_fix.strip(),
+                why_first=out.root.strip() or out.missing.strip() or "Primary change from film.",
+                body_feels=[_polish_cue(t) for t in out.tips[:2] if t.strip()]
+                or [out.main_fix.strip()],
+                space_feels=[_polish_cue(out.space_cue)] if out.space_cue.strip() else [out.main_fix.strip()],
+                drill=drills[0] if drills else None,
+            )
+        ]
+    return []
+
+
+def _build_priority_fixes(
+    out: GeminiReportOut,
+    drills: list[DrillSummary],
+) -> list[PrioritizedFeelFix]:
+    parsed = [
+        fix
+        for raw in (out.pri1, out.pri2, out.pri3, out.pri4, out.pri5)
+        if (fix := _parse_priority_pipe(raw)) is not None
+    ]
+    if len(parsed) >= 2:
+        return sorted(parsed, key=lambda item: item.rank)[:5]
+    return _fallback_priority_fixes(out, drills)
+
+
+def _priority_main_fix(priorities: list[PrioritizedFeelFix], fallback: str) -> str:
+    if not priorities:
+        return fallback
+    primary = priorities[0]
+    return f"{primary.title}: {primary.issue} {primary.why_first}".strip()
+
+
 def _build_feel_blueprint(out: GeminiReportOut) -> FeelBlueprintDiagnostic | None:
     if not out.letter_open.strip() or not out.strength1.strip() or not out.flaw1.strip():
         return None
@@ -1000,6 +1229,11 @@ def _normalize_gemini_dict(data: dict) -> dict:
         "fix3",
         "body_cue",
         "space_cue",
+        "pri1",
+        "pri2",
+        "pri3",
+        "pri4",
+        "pri5",
         "foundational_missing_piece",
         "secondary_fix",
         "miss_conflict_note",
@@ -1503,6 +1737,33 @@ def apply_film_first_report(
             }
         )
 
+    priority_fixes = list(report.priority_fixes)
+    if priority_fixes:
+        primary = priority_fixes[0]
+        priority_fixes[0] = primary.model_copy(
+            update={
+                "issue": main_fix,
+                "why_first": primary.why_first or adv.root_cause or main_fix,
+            }
+        )
+    elif film_evidence:
+        priority_fixes = _fallback_priority_fixes(
+            GeminiReportOut(
+                main_fix=main_fix,
+                root=main_fix,
+                missing=grading.foundational_missing_piece or main_fix,
+                secondary=secondary_fix,
+                body_cue=report.tips_and_feels[0] if report.tips_and_feels else "",
+                space_cue=report.tips_and_feels[1] if len(report.tips_and_feels) > 1 else "",
+                tips=report.tips_and_feels,
+                checkpoints=[
+                    f"{item.checkpoint}|{item.grade}|{item.observation}"
+                    for item in adv.diagnostic_checkpoints
+                ],
+            ),
+            report.drills,
+        )
+
     updated = report.model_copy(
         update={
             "pga_analysis": film_analysis,
@@ -1510,6 +1771,7 @@ def apply_film_first_report(
             "tips_and_feels": report.tips_and_feels,
             "advanced_details": adv,
             "coach_verdict": coach_verdict,
+            "priority_fixes": priority_fixes,
         }
     )
     return updated
@@ -1600,6 +1862,7 @@ def _observer_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSche
             next_checkpoint="",
         ),
         feel_blueprint=None,
+        priority_fixes=[],
         blueprint=KinestheticBlueprint(
             headline="Observation",
             intro="Phase-by-phase visible movement notes.",
@@ -1728,12 +1991,15 @@ def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
         if parsed:
             drills.append(parsed)
 
+    priority_fixes = _build_priority_fixes(out, drills[:3])
+    main_fix = _priority_main_fix(priority_fixes, out.main_fix.strip())
+
     next_check = out.next_check.strip()
 
     return CoachingReportSchema(
         personalized_greeting=out.greeting.strip(),
         pga_analysis=analysis_text,
-        main_fix=out.main_fix.strip(),
+        main_fix=main_fix,
         tips_and_feels=tips,
         drills=drills[:3],
         next_swing_check=next_check,
@@ -1756,6 +2022,7 @@ def gemini_out_to_coaching_report(out: GeminiReportOut) -> CoachingReportSchema:
             next_checkpoint="",
         ),
         feel_blueprint=feel_blueprint,
+        priority_fixes=priority_fixes,
         blueprint=_gemini_blueprint(out, tips),
         roadmap=_gemini_roadmap(out),
         next_upload_focus=next_check,

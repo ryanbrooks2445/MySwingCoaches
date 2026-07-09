@@ -94,4 +94,77 @@ export const EXAMPLE_SIMPLIFIED_REPORT: SimplifiedSwingReport = {
       { label: "Impact", rating: "Limited visibility" },
     ],
   },
+  priority_fixes: [
+    {
+      rank: 1,
+      phase: "Setup",
+      title: "Athletic spine angle",
+      issue:
+        "Rounded upper spine (C-posture) at address restricts rotational capacity and sets up later posture loss.",
+      why_first: "Root cause on film — every downstream compensation traces back to limited rotation room at address.",
+      body_feels: [
+        "Feel sternum over belt buckle — not a rounded upper back.",
+        "Push chest toward the ball without arching the lower back.",
+      ],
+      space_feels: [
+        "Room to turn without lifting your head.",
+        "Keep steady space between chin and chest through the takeaway.",
+      ],
+      drill: {
+        name: "Wall posture drill",
+        why_it_helps: "Trains neutral spine at address so rotation does not require standing up.",
+        how_to_do_it: "Upper back against a wall, hinge from hips, 10 rehearsal setups before hitting.",
+      },
+    },
+    {
+      rank: 2,
+      phase: "Takeaway",
+      title: "Club in front of hands",
+      issue: "Clubhead moves outside the hands with a slightly closed face — a steep backswing setup.",
+      why_first: "Common reaction to C-posture that steepens the backswing plane before transition.",
+      body_feels: [
+        "Feel hands staying under your sternum on the first move.",
+        "Keep the toe from rolling open early.",
+      ],
+      space_feels: [
+        "Clubhead stays in front of your trail shoulder until parallel.",
+        "Width without lifting the club steeply.",
+      ],
+      drill: {
+        name: "Headcover under trail arm",
+        why_it_helps: "Prevents the roll-open takeaway that steepens the plane.",
+        how_to_do_it: "10 half-speed takeaways keeping the headcover in place.",
+      },
+    },
+    {
+      rank: 3,
+      phase: "Backswing",
+      title: "Turn without standing up",
+      issue: "Spine straightens and head lifts to complete the turn — laid-off club at the top.",
+      why_first: "Direct compensation for the rotational limit set by setup posture.",
+      body_feels: [
+        "Feel your belt buckle turning while your head stays level.",
+        "Lead arm stays long without lifting the shoulders.",
+      ],
+      space_feels: [
+        "Club points at target line at the top — not laid off behind you.",
+        "Maintain the spine angle you set at address.",
+      ],
+    },
+    {
+      rank: 4,
+      phase: "Downswing",
+      title: "Shallow the plane",
+      issue: "Steep shaft forces over-the-top path and early extension to create space.",
+      why_first: "Downstream of setup and takeaway — fix after earlier ranks hold on film.",
+      body_feels: [
+        "Feel lead hip clearing before hands drop.",
+        "Stay in posture — hips rotate, not thrust toward the ball.",
+      ],
+      space_feels: [
+        "Club drops into the slot from inside.",
+        "Hands stay in front of chest through impact.",
+      ],
+    },
+  ],
 };

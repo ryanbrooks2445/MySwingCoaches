@@ -197,7 +197,14 @@ OUTPUT — Return JSON only matching the coaching schema:
 - rating, categories: calibrated from locked grades
 - analysis: leave empty or one sentence — phase walkthrough is built from Call 1 on the server
 - main_fix: one priority tied to the earliest Constraint on film (quote what you saw)
-- tips: 2-4 feel cues tied to visible issues only
+- pri1 through pri5: ranked coaching priorities — root cause first, downstream chain after
+  Pipe format per field (10 parts): rank|phase|title|issue|why_first|body_feel1;;body_feel2|space_feel1;;space_feel2|drill_name|drill_why|drill_how
+  - rank 1 MUST be the earliest Constraint phase (usually Setup or Takeaway)
+  - Include at least pri1, pri2, pri3 when film shows a chain of compensations
+  - Each priority needs 2+ body feels OR 2+ space feels (use ;; between multiple feels)
+  - phase must be one of: Setup, Takeaway, Backswing, Transition, Downswing, Impact
+  - title names the fix; issue quotes what film showed; why_first explains rank in the chain
+- tips: 2-4 feel cues tied to visible issues only (supplement pri fields, do not repeat verbatim)
 - drill1, drill2, drill3: each "name|why|how" matched to main_fix
 - next_check: camera angle that would clarify the biggest not_visible phase
 - mode: copy locked report_mode
@@ -480,6 +487,7 @@ def _fallback_report(
             next_checkpoint=default_checkpoint,
         ),
         feel_blueprint=None,
+        priority_fixes=[],
         blueprint=KinestheticBlueprint(
             headline="Film again",
             intro="One clear video unlocks your plan.",

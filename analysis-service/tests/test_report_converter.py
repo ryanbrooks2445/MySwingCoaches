@@ -471,3 +471,44 @@ def test_filters_not_visible_evidence_and_phase_map() -> None:
             {"phase": "impact", "confidence": 0.9, "person_visible": False},
         ]
     ) == [{"phase": "top", "confidence": 0.8, "person_visible": True}]
+
+
+def test_builds_priority_fixes_from_pri_fields() -> None:
+    report = gemini_out_to_coaching_report(
+        _gemini_out(
+            pri1=(
+                "1|Setup|Athletic spine angle|Rounded upper spine at address|"
+                "Root cause on film|Feel sternum over belt;;Push chest toward ball|"
+                "Room to turn without lifting head|Wall posture|Trains neutral spine|10 reps"
+            ),
+            pri2=(
+                "2|Takeaway|Club in front of hands|Clubhead outside hands with closed face|"
+                "Steepens backswing|Feel hands under sternum;;Toe stays outside hands|"
+                "Clubhead in front of trail shoulder|Headcover drill|Stops roll-open takeaway|10 half swings"
+            ),
+            pri3=(
+                "3|Backswing|Turn without standing up|Spine straightens and head lifts|"
+                "Compensation for setup limit|Feel belt buckle turning;;Head stays level|"
+                "Club points at target line at top"
+            ),
+        )
+    )
+
+    assert len(report.priority_fixes) == 3
+    assert report.priority_fixes[0].rank == 1
+    assert report.priority_fixes[0].phase == "Setup"
+    assert len(report.priority_fixes[0].body_feels) == 2
+    assert len(report.priority_fixes[0].space_feels) >= 1
+    assert report.priority_fixes[0].drill is not None
+    assert report.priority_fixes[0].drill.name == "Wall posture"
+    assert "Athletic spine angle" in report.main_fix
+
+
+def test_fallback_priority_fixes_from_flaws_when_pri_missing() -> None:
+    report = gemini_out_to_coaching_report(_gemini_out())
+
+    assert len(report.priority_fixes) >= 2
+    assert report.priority_fixes[0].rank == 1
+    assert report.priority_fixes[0].body_feels
+    assert report.priority_fixes[0].space_feels
+    assert "sitting stance" in report.priority_fixes[0].title.lower()

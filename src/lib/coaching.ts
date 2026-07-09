@@ -13,7 +13,10 @@ import {
 } from "@/lib/report-display";
 
 function hasSimplifiedReport(content: CoachingContent): boolean {
-  return Boolean(content.pga_analysis?.trim() && content.main_fix?.trim());
+  return Boolean(
+    (content.pga_analysis?.trim() && content.main_fix?.trim()) ||
+      (content.priority_fixes?.length ?? 0) >= 2
+  );
 }
 
 function hasNewFeelBlueprint(content: CoachingContent): boolean {
@@ -198,6 +201,7 @@ export function getSimplifiedReport(
           pga_analysis: content.pga_analysis,
           main_fix: content.main_fix,
         }) ?? undefined,
+      priority_fixes: content.priority_fixes,
     };
     return simplified;
   }
@@ -214,6 +218,7 @@ export function getSimplifiedReport(
         best_fix: content.feel_blueprint.pro_fixes[0]?.detail,
       }) ??
       undefined;
+    simplified.priority_fixes = content.priority_fixes;
     return simplified;
   }
   if (content.diagnostic && content.blueprint) {
