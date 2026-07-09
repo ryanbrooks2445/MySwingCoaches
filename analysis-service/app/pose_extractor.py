@@ -145,17 +145,20 @@ def _get_landmarker(model_path: Path | None = None) -> vision.PoseLandmarker:
     if _landmarker is not None and _active_model_path == resolved:
         return _landmarker
 
-    options = vision.PoseLandmarkerOptions(
-        base_options=mp.tasks.BaseOptions(model_asset_path=str(resolved)),
-        running_mode=vision.RunningMode.IMAGE,
-        num_poses=1,
-        min_pose_detection_confidence=0.5,
-        min_pose_presence_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
-    _landmarker = vision.PoseLandmarker.create_from_options(options)
-    _active_model_path = resolved
-    return _landmarker
+    try:
+        options = vision.PoseLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(resolved)),
+            running_mode=vision.RunningMode.IMAGE,
+            num_poses=1,
+            min_pose_detection_confidence=0.5,
+            min_pose_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        _landmarker = vision.PoseLandmarker.create_from_options(options)
+        _active_model_path = resolved
+        return _landmarker
+    except OSError as exc:
+        raise RuntimeError(f"MediaPipe native libraries unavailable: {exc}") from exc
 
 
 def _round(value: float, places: int = 1) -> float:
@@ -406,7 +409,7 @@ def extract_pose_sequence(frames: list[np.ndarray]) -> PoseSequence:
 
     try:
         sequence = _run_pose_on_frames(frames, lite_path)
-    except (FileNotFoundError, TypeError, ValueError) as exc:
+    except (FileNotFoundError, TypeError, ValueError, RuntimeError, OSError) as exc:
         logger.warning("MediaPipe extraction failed: %s", exc)
         return PoseSequence(
             frames=[FramePose(frame_index=i, confidence=0.0, landmarks=None) for i in range(len(frames))],
