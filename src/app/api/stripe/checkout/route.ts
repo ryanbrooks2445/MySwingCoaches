@@ -20,16 +20,12 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { hasUnlimitedAccess } from "@/lib/subscription-access";
 import type { Subscription } from "@/lib/types";
 
-function parseCheckoutProduct(body: unknown): CheckoutProduct {
-  if (
-    body &&
-    typeof body === "object" &&
-    "product" in body &&
-    (body as { product?: string }).product === PRODUCT_ANNUAL_UNLIMITED
-  ) {
-    return PRODUCT_ANNUAL_UNLIMITED;
-  }
-  return PRODUCT_SWING_UPLOAD;
+function parseCheckoutProduct(body: unknown): CheckoutProduct | null {
+  if (!body || typeof body !== "object" || !("product" in body)) return null;
+  const product = (body as { product?: string }).product;
+  if (product === PRODUCT_ANNUAL_UNLIMITED) return PRODUCT_ANNUAL_UNLIMITED;
+  if (product === PRODUCT_SWING_UPLOAD) return PRODUCT_SWING_UPLOAD;
+  return null;
 }
 
 async function ensureStripeCustomer(
@@ -76,12 +72,19 @@ export async function POST(request: NextRequest) {
   });
   if (limited) return limited;
 
-  let product: CheckoutProduct = PRODUCT_SWING_UPLOAD;
+  let product: CheckoutProduct | null = null;
   try {
     const body = await request.json();
     product = parseCheckoutProduct(body);
   } catch {
-    product = PRODUCT_SWING_UPLOAD;
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  if (!product) {
+    return NextResponse.json(
+      { error: "Invalid product. Accepted values: 'swing_upload' or 'annual_unlimited'." },
+      { status: 400 }
+    );
   }
 
   const serviceClient = createServiceClient();
@@ -127,6 +130,7 @@ export async function POST(request: NextRequest) {
             product_data: {
               name: CHECKOUT_ANNUAL_PRODUCT_NAME,
               description: "Unlimited swing analyses for one year",
+              statement_descriptor: checkoutStatementDescriptor(),
             },
           },
         },
