@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.person_detection import score_frame_person
+from app.pose_extractor import PoseSequence
 
 PERSON_THRESHOLD = 0.38
 MIN_WINDOW_FRAMES = 8
@@ -34,7 +35,9 @@ class SwingWindowError(ValueError):
     """Raised when no usable swing window can be detected."""
 
 
-def _person_scores(frames: list[np.ndarray]) -> list[float]:
+def _person_scores(frames: list[np.ndarray], pose_sequence: PoseSequence | None = None) -> list[float]:
+    if pose_sequence and pose_sequence.average_confidence >= 0.35:
+        return pose_sequence.person_scores()
     return [score_frame_person(frame).confidence for frame in frames]
 
 
@@ -66,6 +69,7 @@ def detect_swing_window(
     *,
     fps: float,
     sample_every_n: int = 2,
+    pose_sequence: PoseSequence | None = None,
 ) -> SwingWindow:
     """
     Find the longest contiguous segment where a person is likely visible.
@@ -74,7 +78,7 @@ def detect_swing_window(
     if len(frames) < 5:
         raise SwingWindowError("Video too short for swing analysis (need at least 5 sampled frames)")
 
-    scores = _person_scores(frames)
+    scores = _person_scores(frames, pose_sequence)
     person_coverage = sum(1 for s in scores if s >= PERSON_THRESHOLD) / len(scores)
     if person_coverage < MIN_PERSON_COVERAGE:
         raise SwingWindowError(

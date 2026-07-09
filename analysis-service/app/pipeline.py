@@ -9,6 +9,7 @@ from app.gemini_coach import generate_coaching_report
 from app.mode_resolver import resolve_report_mode
 from app.persistence import persist_analysis_result, upload_key_frames
 from app.phase_detector import PhaseDetectionResult, detect_swing_phases
+from app.pose_extractor import PoseSequence, extract_pose_sequence
 from app.report_audit import audit_report_quality
 from app.media_validation import validate_and_normalize_video
 from app.schemas import AnalyzeRequest, CoachingReportSchema
@@ -25,9 +26,10 @@ def _phases_for_mode(
     frames: list,
     window,
     swing_mode: str,
+    pose_sequence=None,
 ) -> PhaseDetectionResult | None:
     if swing_mode == "full_swing":
-        return detect_swing_phases(frames, window)
+        return detect_swing_phases(frames, window, pose_sequence)
 
     span = window.end_frame - window.start_frame
     if span <= 0:
@@ -74,8 +76,14 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
         if len(frames) < 5:
             raise ValueError("Video too short for swing analysis (need at least 5 sampled frames)")
 
-        swing_window = detect_swing_window(frames, fps=fps, sample_every_n=SAMPLE_EVERY_N)
-        phase_result = _phases_for_mode(frames, swing_window, request.swing_mode)
+        pose_sequence: PoseSequence = extract_pose_sequence(frames)
+        swing_window = detect_swing_window(
+            frames,
+            fps=fps,
+            sample_every_n=SAMPLE_EVERY_N,
+            pose_sequence=pose_sequence,
+        )
+        phase_result = _phases_for_mode(frames, swing_window, request.swing_mode, pose_sequence)
         if phase_result is None:
             raise ValueError("Could not detect swing phases")
 
@@ -104,6 +112,7 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
             phase_result=phase_result,
             swing_window=swing_window.to_dict(),
             swing_mode=request.swing_mode,
+            pose_sequence=pose_sequence,
             history_summary=request.history_summary,
             player_name=request.player_name,
             swing_number=request.swing_number,
@@ -138,6 +147,7 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
             trace_id=trace_id,
             phase_map=phase_result.phase_map,
             swing_window=swing_window.to_dict(),
+            pose_landmarks=pose_sequence.to_persist_dict(phase_result.keyframe_indices),
         )
 
         return report

@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types
 
 from app.phase_detector import PhaseDetectionResult
+from app.pose_extractor import PoseSequence, build_pose_evidence, overlay_pose_skeleton
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = 90) -> bytes:
 def build_phase_evidence_packet(
     phase_result: PhaseDetectionResult,
     swing_window: dict | None = None,
+    pose_sequence: PoseSequence | None = None,
 ) -> str:
     payload = {
         "swing_window": swing_window or {},
@@ -84,6 +86,11 @@ def build_phase_evidence_packet(
             "Mark checkpoints not_visible when person_visible is false for that phase.",
         ],
     }
+    if pose_sequence and pose_sequence.average_confidence > 0:
+        payload["pose_tracking"] = build_pose_evidence(
+            pose_sequence,
+            phase_result.keyframe_indices,
+        )
     return json.dumps(payload, indent=2)
 
 
@@ -91,6 +98,7 @@ def build_keyframe_parts(
     frames: list[np.ndarray],
     phase_result: PhaseDetectionResult,
     swing_mode: str = "full_swing",
+    pose_sequence: PoseSequence | None = None,
 ) -> list[types.Part]:
     motion_label = {"full_swing": "swing", "chipping": "chip", "putting": "putting stroke"}.get(
         swing_mode, "swing"
@@ -126,7 +134,13 @@ def build_keyframe_parts(
                 )
             )
         )
-        jpeg = frame_to_jpeg_bytes(frames[idx])
+        jpeg_frame = frames[idx]
+        if pose_sequence and pose_sequence.confidence_at(idx) >= 0.45:
+            jpeg_frame = overlay_pose_skeleton(
+                frames[idx],
+                pose_sequence.landmarks_at(idx),
+            )
+        jpeg = frame_to_jpeg_bytes(jpeg_frame)
         parts.append(types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"))
 
     return parts

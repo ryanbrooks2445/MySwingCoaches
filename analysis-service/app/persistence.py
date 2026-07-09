@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.frame_extractor import save_frame_jpeg
 from app.schemas import CoachingReportSchema, KeyFrame
 from app.report_converter import filter_phase_map
+from app.trace_log import log_trace
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ def persist_analysis_result(
     trace_id: str | None = None,
     phase_map: list[dict] | None = None,
     swing_window: dict | None = None,
+    pose_landmarks: dict | None = None,
 ) -> None:
     client = get_supabase_client()
     visible_phase_map = filter_phase_map(phase_map)
@@ -103,6 +105,7 @@ def persist_analysis_result(
             "key_frames": key_frame_urls,
             "phase_map": visible_phase_map,
             "swing_window": swing_window,
+            "pose_landmarks": pose_landmarks or {},
         },
     }
 
@@ -123,7 +126,7 @@ def persist_analysis_result(
         "key_frame_urls": key_frame_urls,
         "phase_map": visible_phase_map,
         "swing_window": swing_window,
-        "pose_landmarks": {},
+        "pose_landmarks": pose_landmarks or {},
         "gemini_raw": gemini_raw,
         "ai_narrative_available": ai_narrative_available,
         "error_message": (gemini_meta or {}).get("error") if not ai_narrative_available else None,

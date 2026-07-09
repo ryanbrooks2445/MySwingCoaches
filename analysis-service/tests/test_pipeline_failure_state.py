@@ -1,5 +1,6 @@
 from app import persistence, pipeline
 from app.gemini_coach import _fallback_report
+from app.pose_extractor import PoseSequence
 from app.schemas import AnalyzeRequest
 
 
@@ -43,14 +44,23 @@ def test_run_analysis_persists_fallback_report_when_ai_is_unavailable(monkeypatc
     monkeypatch.setattr(pipeline, "extract_frames", lambda _path, sample_every_n: ([object()] * 5, 30.0, 1))
     monkeypatch.setattr(
         pipeline,
+        "extract_pose_sequence",
+        lambda _frames: PoseSequence(frames=[], average_confidence=0.0),
+    )
+    monkeypatch.setattr(
+        pipeline,
         "detect_swing_window",
-        lambda _frames, fps, sample_every_n: type(
+        lambda _frames, fps, sample_every_n, pose_sequence=None: type(
             "Window",
             (),
             {"to_dict": lambda self: {"start_frame": 0, "end_frame": 0}},
         )(),
     )
-    monkeypatch.setattr(pipeline, "_phases_for_mode", lambda _frames, _window, _mode: PhaseResult())
+    monkeypatch.setattr(
+        pipeline,
+        "_phases_for_mode",
+        lambda _frames, _window, _mode, _pose_sequence=None: PhaseResult(),
+    )
     monkeypatch.setattr(pipeline, "upload_key_frames", lambda *_args: [])
     monkeypatch.setattr(
         pipeline,

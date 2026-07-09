@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from app.person_detection import frame_motion_score, score_frame_person
+from app.pose_extractor import PoseSequence, hip_line_angle_for_frame, hip_rotation_proxy, wrist_height_proxy
 from app.swing_window import SwingWindow
 from app.vision_fusion import _image_quality
 from app.debug_agent_log import agent_log
@@ -90,7 +91,16 @@ def _candidate_indices(window: SwingWindow, count: int = 10) -> list[int]:
     return [start + int(i * span / (n - 1)) for i in range(n)]
 
 
-def _rotation_proxy(frames: list[np.ndarray], index: int, setup: tuple[float, float]) -> float:
+def _rotation_proxy(
+    frames: list[np.ndarray],
+    index: int,
+    setup: tuple[float, float],
+    pose_sequence: PoseSequence | None = None,
+    setup_hip_angle: float | None = None,
+) -> float:
+    if pose_sequence and pose_sequence.confidence_at(index) >= 0.4 and setup_hip_angle is not None:
+        return hip_rotation_proxy(pose_sequence, index, setup_hip_angle)
+
     proxy = score_frame_person(frames[index])
     cx, cy = proxy.center
     sx, sy = setup
@@ -206,33 +216,53 @@ def _resolve_slot_collisions(
     return resolved_impact_idx, adjusted
 
 
-def _frame_confidence(frames: list[np.ndarray], index: int) -> tuple[float, bool, str]:
+def _frame_confidence(
+    frames: list[np.ndarray],
+    index: int,
+    pose_sequence: PoseSequence | None = None,
+) -> tuple[float, bool, str]:
     proxy = score_frame_person(frames[index])
     quality = _image_quality(frames[index])
     sharpness = float(quality.get("sharpness", 0))
-    person_visible = proxy.confidence >= PERSON_VISIBLE_THRESHOLD
+    pose_conf = pose_sequence.confidence_at(index) if pose_sequence else 0.0
+    person_visible = proxy.confidence >= PERSON_VISIBLE_THRESHOLD or pose_conf >= 0.45
     quality_factor = min(1.0, sharpness / 120.0)
-    confidence = proxy.confidence * 0.7 + quality_factor * 0.3
+    confidence = max(proxy.confidence, pose_conf) * 0.7 + quality_factor * 0.3
     notes = ""
     if not person_visible:
         notes = "Person not clearly visible in frame."
     elif sharpness < 45:
         notes = "Frame is soft or blurry."
+    elif pose_conf >= 0.55:
+        notes = "Pose landmarks detected."
     return confidence, person_visible, notes
 
 
 def detect_swing_phases(
     frames: list[np.ndarray],
     window: SwingWindow,
+    pose_sequence: PoseSequence | None = None,
 ) -> PhaseDetectionResult:
-    """Map swing phases within the detected window using OpenCV heuristics."""
+    """Map swing phases within the detected window using motion and pose heuristics."""
     candidates = _candidate_indices(window)
     motions = [frame_motion_score(frames, i) for i in candidates]
     setup_center = score_frame_person(frames[candidates[0]]).center
-    rotations = [_rotation_proxy(frames, idx, setup_center) for idx in candidates]
+
+    setup_hip_angle = hip_line_angle_for_frame(pose_sequence, candidates[0]) if pose_sequence else None
+
+    rotations = [
+        _rotation_proxy(frames, idx, setup_center, pose_sequence, setup_hip_angle)
+        for idx in candidates
+    ]
 
     peak_motion_idx = int(np.argmax(motions))
-    peak_rotation_idx = int(np.argmax(rotations[: max(peak_motion_idx + 1, 1)]))
+
+    if pose_sequence and pose_sequence.average_confidence >= 0.45:
+        wrist_heights = [wrist_height_proxy(pose_sequence, idx) for idx in candidates]
+        backswing_end = max(peak_motion_idx, 1)
+        peak_rotation_idx = int(np.argmin(wrist_heights[:backswing_end]))
+    else:
+        peak_rotation_idx = int(np.argmax(rotations[: max(peak_motion_idx + 1, 1)]))
 
     slot_indices: dict[str, int] = {
         "address": candidates[0],
@@ -268,7 +298,9 @@ def detect_swing_phases(
         },
     )
     # endregion
-    impact_conf, impact_visible, impact_notes = _frame_confidence(frames, impact_idx)
+    impact_conf, impact_visible, impact_notes = _frame_confidence(
+        frames, impact_idx, pose_sequence
+    )
     if "impact" in adjusted_phases:
         impact_conf = min(impact_conf, COLLISION_CONFIDENCE_CAP)
         impact_notes = (
@@ -291,7 +323,7 @@ def detect_swing_phases(
             stored = impact_phase_name
         else:
             idx = slot_indices[phase_name]
-            conf, visible, notes = _frame_confidence(frames, idx)
+            conf, visible, notes = _frame_confidence(frames, idx, pose_sequence)
             stored = phase_name
             if phase_name in adjusted_phases:
                 conf = min(conf, COLLISION_CONFIDENCE_CAP)

@@ -1263,6 +1263,7 @@ def generate_coaching_report(
     phase_result: PhaseDetectionResult | None,
     swing_window: dict | None = None,
     swing_mode: SwingMode = "full_swing",
+    pose_sequence=None,
     history_summary: str | None,
     player_name: str | None = None,
     swing_number: int | None = None,
@@ -1324,7 +1325,9 @@ def generate_coaching_report(
                         "to describe what you see in each phase. Inspect address posture, visual body lines, "
                         "takeaway shaft/clubface, top-of-backswing arm and face structure, transition sequencing, "
                         "downswing hip/chest clearing, shaft plane, head level, impact-window geometry, and finish "
-                        "balance. Describe the club, the body, and any camera limitations with enough detail that "
+                        "balance. When POSE TRACKING metrics are present in the PHASE EVIDENCE PACKET, treat them as "
+                        "server-computed supporting geometry — corroborate them with what you see in video, and note "
+                        "when they conflict with visible motion. Describe the club, the body, and any camera limitations with enough detail that "
                         "another coach could reconstruct the motion. Do NOT diagnose, coach, or grade. Return the "
                         "requested JSON only."
                     )
@@ -1336,13 +1339,15 @@ def generate_coaching_report(
                 types.Part.from_text(
                     text=(
                         "PHASE EVIDENCE PACKET (server-verified; treat as authoritative):\n"
-                        + build_phase_evidence_packet(phase_result, swing_window)
+                        + build_phase_evidence_packet(phase_result, swing_window, pose_sequence)
                     )
                 )
             )
 
         if frames and phase_result:
-            call1_visual_parts.extend(build_keyframe_parts(frames, phase_result, swing_mode))
+            call1_visual_parts.extend(
+                build_keyframe_parts(frames, phase_result, swing_mode, pose_sequence)
+            )
 
         for model in _models_to_try(settings.gemini_model, settings.gemini_fallback_model):
             try:
