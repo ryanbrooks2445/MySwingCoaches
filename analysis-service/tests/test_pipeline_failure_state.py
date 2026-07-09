@@ -38,6 +38,8 @@ def test_run_analysis_persists_fallback_report_when_ai_is_unavailable(monkeypatc
     class PhaseResult:
         keyframe_indices = {"setup": 0}
         phase_map = [{"phase": "setup", "frame_index": 0, "confidence": 0.8}]
+        validation = {}
+        timeline = {}
 
     monkeypatch.setattr(pipeline, "download_video", lambda _url: video_path)
     monkeypatch.setattr(pipeline, "validate_and_normalize_video", lambda _path: None)

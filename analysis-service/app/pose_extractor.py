@@ -38,6 +38,7 @@ CORE_LANDMARKS = (
 )
 
 _landmarker: vision.PoseLandmarker | None = None
+_active_model_path: Path | None = None
 
 
 @dataclass
@@ -92,7 +93,21 @@ class PoseSequence:
     def person_scores(self) -> list[float]:
         return [frame.confidence for frame in self.frames]
 
-    def to_persist_dict(self, phase_indices: dict[str, int]) -> dict[str, Any]:
+    def to_persist_dict(
+        self,
+        phase_indices: dict[str, int],
+        *,
+        validation: dict[str, dict[str, Any]] | None = None,
+        timeline: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = self.to_persist_dict_legacy(phase_indices)
+        if validation:
+            payload["phase_validation"] = validation
+        if timeline:
+            payload["pose_timeline"] = timeline
+        return payload
+
+    def to_persist_dict_legacy(self, phase_indices: dict[str, int]) -> dict[str, Any]:
         keyframes: dict[str, Any] = {}
         for phase, idx in phase_indices.items():
             if idx < 0 or idx >= len(self.frames):
@@ -124,14 +139,14 @@ def _resolve_model_path() -> Path:
     )
 
 
-def _get_landmarker() -> vision.PoseLandmarker:
-    global _landmarker
-    if _landmarker is not None:
+def _get_landmarker(model_path: Path | None = None) -> vision.PoseLandmarker:
+    global _landmarker, _active_model_path
+    resolved = model_path or _resolve_model_path()
+    if _landmarker is not None and _active_model_path == resolved:
         return _landmarker
 
-    model_path = _resolve_model_path()
     options = vision.PoseLandmarkerOptions(
-        base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),
+        base_options=mp.tasks.BaseOptions(model_asset_path=str(resolved)),
         running_mode=vision.RunningMode.IMAGE,
         num_poses=1,
         min_pose_detection_confidence=0.5,
@@ -139,6 +154,7 @@ def _get_landmarker() -> vision.PoseLandmarker:
         min_tracking_confidence=0.5,
     )
     _landmarker = vision.PoseLandmarker.create_from_options(options)
+    _active_model_path = resolved
     return _landmarker
 
 
@@ -252,12 +268,16 @@ def compute_frame_metrics(
 def compute_phase_metrics(
     pose_sequence: PoseSequence,
     phase_indices: dict[str, int],
+    *,
+    validation: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     address_idx = phase_indices.get("address")
     reference = pose_sequence.landmarks_at(address_idx) if address_idx is not None else None
 
     phase_metrics: dict[str, Any] = {}
     for phase, idx in phase_indices.items():
+        if validation is not None and not validation.get(phase, {}).get("validated", False):
+            continue
         landmarks = pose_sequence.landmarks_at(idx)
         metrics = compute_frame_metrics(landmarks, reference=reference)
         if metrics:
@@ -285,16 +305,31 @@ def compute_phase_metrics(
     return phase_metrics
 
 
-def build_pose_evidence(pose_sequence: PoseSequence, phase_indices: dict[str, int]) -> dict[str, Any]:
+def build_pose_evidence(
+    pose_sequence: PoseSequence,
+    phase_indices: dict[str, int],
+    *,
+    validation: dict[str, dict[str, Any]] | None = None,
+    timeline: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "provider": pose_sequence.provider,
         "model": pose_sequence.model,
         "camera_angle_estimate": pose_sequence.camera_angle_estimate,
         "average_pose_confidence": round(pose_sequence.average_confidence, 3),
         "limitations": pose_sequence.limitations,
-        "phase_metrics": compute_phase_metrics(pose_sequence, phase_indices),
+        "pose_timeline": timeline or {},
+        "phase_validation": validation or {},
+        "phase_metrics": compute_phase_metrics(
+            pose_sequence,
+            phase_indices,
+            validation=validation,
+        ),
         "rules": [
-            "Pose metrics are server-computed estimates from MediaPipe; use as supporting evidence.",
+            "Full video is the primary truth for club motion and timing.",
+            "pose_timeline shows body geometry over time inside the swing window.",
+            "phase_metrics are only attached for pose-validated phase frames.",
+            "If a keyframe still conflicts with the video, trust the video and note the mismatch.",
             "If average_pose_confidence < 0.45, prefer full-video observations over numeric metrics.",
             "Do not claim precise impact geometry when impact phase is impact_window_estimate.",
         ],
@@ -319,21 +354,8 @@ def _frame_pose_from_result(frame_index: int, result: vision.PoseLandmarkerResul
     return FramePose(frame_index=frame_index, confidence=confidence, landmarks=landmarks)
 
 
-def extract_pose_sequence(frames: list[np.ndarray]) -> PoseSequence:
-    """Run MediaPipe Pose on sampled RGB frames."""
-    if not frames:
-        return PoseSequence(frames=[], limitations=["No frames available for pose extraction."])
-
-    try:
-        landmarker = _get_landmarker()
-        model_path = _resolve_model_path()
-    except FileNotFoundError as exc:
-        logger.warning("MediaPipe model unavailable: %s", exc)
-        return PoseSequence(
-            frames=[FramePose(frame_index=i, confidence=0.0, landmarks=None) for i in range(len(frames))],
-            limitations=[str(exc)],
-        )
-
+def _run_pose_on_frames(frames: list[np.ndarray], model_path: Path) -> PoseSequence:
+    landmarker = _get_landmarker(model_path)
     frame_poses: list[FramePose] = []
 
     for index, frame in enumerate(frames):
@@ -366,6 +388,48 @@ def extract_pose_sequence(frames: list[np.ndarray]) -> PoseSequence:
         average_confidence=average_confidence,
         limitations=limitations,
     )
+
+
+def extract_pose_sequence(frames: list[np.ndarray]) -> PoseSequence:
+    """Run MediaPipe Pose on sampled RGB frames; retry with full model if lite is weak."""
+    if not frames:
+        return PoseSequence(frames=[], limitations=["No frames available for pose extraction."])
+
+    try:
+        lite_path = DEFAULT_MODEL if DEFAULT_MODEL.exists() else _resolve_model_path()
+    except FileNotFoundError as exc:
+        logger.warning("MediaPipe model unavailable: %s", exc)
+        return PoseSequence(
+            frames=[FramePose(frame_index=i, confidence=0.0, landmarks=None) for i in range(len(frames))],
+            limitations=[str(exc)],
+        )
+
+    try:
+        sequence = _run_pose_on_frames(frames, lite_path)
+    except (FileNotFoundError, TypeError, ValueError) as exc:
+        logger.warning("MediaPipe extraction failed: %s", exc)
+        return PoseSequence(
+            frames=[FramePose(frame_index=i, confidence=0.0, landmarks=None) for i in range(len(frames))],
+            limitations=[str(exc)],
+        )
+
+    if (
+        sequence.average_confidence < 0.45
+        and FALLBACK_MODEL.exists()
+        and lite_path != FALLBACK_MODEL
+    ):
+        logger.info(
+            "Pose lite confidence %.3f — retrying with full model",
+            sequence.average_confidence,
+        )
+        try:
+            full_sequence = _run_pose_on_frames(frames, FALLBACK_MODEL)
+        except FileNotFoundError:
+            return sequence
+        if full_sequence.average_confidence > sequence.average_confidence:
+            return full_sequence
+
+    return sequence
 
 
 def hip_line_angle_for_frame(pose_sequence: PoseSequence, index: int) -> float | None:

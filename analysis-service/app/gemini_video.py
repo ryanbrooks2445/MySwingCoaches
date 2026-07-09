@@ -77,8 +77,13 @@ def build_phase_evidence_packet(
     payload = {
         "swing_window": swing_window or {},
         "phases": phase_result.phase_map,
+        "phase_detection_method": getattr(phase_result, "detection_method", "unknown"),
         "limitations": phase_result.limitation_notes(),
         "rules": [
+            "Full video is the primary truth for club motion, timing, and phase labels.",
+            "pose_tracking.pose_timeline provides server-computed body geometry over time.",
+            "pose_tracking.phase_metrics are only attached for pose-validated phase frames.",
+            "Keyframe stills are approximate anchors; if they conflict with the video, trust the video.",
             "Only grade setup from address/takeaway when person_visible and confidence >= 0.4.",
             "Only grade path/sequencing from downswing/impact when person_visible and confidence >= 0.4.",
             "Only grade finish/balance from early_follow_through/finish when person_visible and confidence >= 0.4.",
@@ -90,6 +95,8 @@ def build_phase_evidence_packet(
         payload["pose_tracking"] = build_pose_evidence(
             pose_sequence,
             phase_result.keyframe_indices,
+            validation=getattr(phase_result, "validation", None),
+            timeline=getattr(phase_result, "timeline", None),
         )
     return json.dumps(payload, indent=2)
 
@@ -122,13 +129,27 @@ def build_keyframe_parts(
             )
             continue
 
+        if not phase_frame.pose_validated:
+            parts.append(
+                types.Part.from_text(
+                    text=(
+                        f"Phase '{phase_frame.phase.replace('_', ' ')}' — APPROXIMATE ANCHOR ONLY "
+                        f"(frame {idx}, confidence {phase_frame.confidence:.2f}). "
+                        "This still was not pose-validated. Use the full video as primary truth for this phase; "
+                        "do not rely on this still for club or impact geometry."
+                        + (f" Notes: {phase_frame.notes}" if phase_frame.notes else "")
+                    )
+                )
+            )
+            continue
+
         pct = int((idx / max(total - 1, 1)) * 100)
         label = phase_frame.phase.replace("_", " ")
         notes = f" Notes: {phase_frame.notes}" if phase_frame.notes else ""
         parts.append(
             types.Part.from_text(
                 text=(
-                    f"Verified still — {pct}% through the {motion_label}. "
+                    f"Pose-validated still — {pct}% through the {motion_label}. "
                     f"Phase: {label}. Confidence: {phase_frame.confidence:.2f}. "
                     f"Person visible: {phase_frame.person_visible}.{notes}"
                 )

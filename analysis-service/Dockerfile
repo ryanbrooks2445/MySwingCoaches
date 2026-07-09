@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /app/models \
     && curl -fsSL -o /app/models/pose_landmarker_lite.task \
-      "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+      "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task" \
+    && curl -fsSL -o /app/models/pose_landmarker_full.task \
+      "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task"
 
 COPY app ./app
 

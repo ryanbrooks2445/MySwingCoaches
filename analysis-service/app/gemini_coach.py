@@ -1321,13 +1321,17 @@ def generate_coaching_report(
             call1_visual_parts.append(
                 types.Part.from_text(
                     text=(
-                        f"Watch the {mode_label} video. Use the PHASE EVIDENCE PACKET and verified stills only "
-                        "to describe what you see in each phase. Inspect address posture, visual body lines, "
+                        f"Watch the {mode_label} video first — it is the primary truth for motion, club, and timing.\n"
+                        "Then use the PHASE EVIDENCE PACKET:\n"
+                        "- pose_tracking.pose_timeline = server-computed body curves over the swing window\n"
+                        "- pose_tracking.phase_metrics = geometry only for pose-validated phase frames\n"
+                        "- phases[] = approximate anchors; keyframe stills are sent ONLY for pose-validated phases\n"
+                        "Describe what you see in each phase. Inspect address posture, visual body lines, "
                         "takeaway shaft/clubface, top-of-backswing arm and face structure, transition sequencing, "
                         "downswing hip/chest clearing, shaft plane, head level, impact-window geometry, and finish "
-                        "balance. When POSE TRACKING metrics are present in the PHASE EVIDENCE PACKET, treat them as "
-                        "server-computed supporting geometry — corroborate them with what you see in video, and note "
-                        "when they conflict with visible motion. Describe the club, the body, and any camera limitations with enough detail that "
+                        "balance. When pose_timeline or phase_metrics conflict with visible video motion, trust the "
+                        "video and note the mismatch in usability_note or phase not_visible fields. "
+                        "Describe the club, the body, and any camera limitations with enough detail that "
                         "another coach could reconstruct the motion. Do NOT diagnose, coach, or grade. Return the "
                         "requested JSON only."
                     )

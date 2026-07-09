@@ -147,7 +147,11 @@ def run_analysis(request: AnalyzeRequest) -> CoachingReportSchema:
             trace_id=trace_id,
             phase_map=phase_result.phase_map,
             swing_window=swing_window.to_dict(),
-            pose_landmarks=pose_sequence.to_persist_dict(phase_result.keyframe_indices),
+            pose_landmarks=pose_sequence.to_persist_dict(
+                phase_result.keyframe_indices,
+                validation=phase_result.validation,
+                timeline=phase_result.timeline,
+            ),
         )
 
         return report

@@ -99,10 +99,17 @@ def test_build_pose_evidence_includes_rules() -> None:
 
 
 def test_extract_pose_sequence_gracefully_handles_missing_model(monkeypatch) -> None:
+    from app.pose_extractor import DEFAULT_MODEL
+
     monkeypatch.setattr(
-        "app.pose_extractor._get_landmarker",
-        lambda: (_ for _ in ()).throw(FileNotFoundError("missing model")),
+        "app.pose_extractor._run_pose_on_frames",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError("missing model")),
     )
+    monkeypatch.setattr(
+        "app.pose_extractor._resolve_model_path",
+        lambda: DEFAULT_MODEL,
+    )
+
     frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(3)]
     sequence = extract_pose_sequence(frames)
     assert len(sequence.frames) == 3

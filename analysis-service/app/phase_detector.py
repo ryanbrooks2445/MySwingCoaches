@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import cv2
 import numpy as np
 
 from app.person_detection import frame_motion_score, score_frame_person
 from app.pose_extractor import PoseSequence, hip_line_angle_for_frame, hip_rotation_proxy, wrist_height_proxy
+from app.pose_phase import POSE_PHASE_MIN_CONFIDENCE, pick_phases_from_pose_timeline
 from app.swing_window import SwingWindow
 from app.vision_fusion import _image_quality
 from app.debug_agent_log import agent_log
@@ -27,6 +29,8 @@ IMPACT_CONFIDENCE_THRESHOLD = 0.5
 PHASE_CONFIDENCE_LOW = 0.4
 COLLISION_ADJUSTMENT_NOTE = "Frame adjusted to avoid duplicate phase mapping."
 COLLISION_CONFIDENCE_CAP = 0.45
+POSE_VALIDATED_NOTE = "Pose-validated phase frame."
+POSE_UNVALIDATED_NOTE = "Phase frame not pose-validated — use full video for this phase."
 
 
 @dataclass
@@ -36,6 +40,7 @@ class PhaseFrame:
     confidence: float
     person_visible: bool
     notes: str = ""
+    pose_validated: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -44,6 +49,7 @@ class PhaseFrame:
             "confidence": round(self.confidence, 3),
             "person_visible": self.person_visible,
             "notes": self.notes,
+            "pose_validated": self.pose_validated,
         }
 
 
@@ -51,6 +57,9 @@ class PhaseFrame:
 class PhaseDetectionResult:
     phases: list[PhaseFrame]
     keyframe_indices: dict[str, int]
+    validation: dict[str, dict[str, Any]] = field(default_factory=dict)
+    timeline: dict[str, Any] = field(default_factory=dict)
+    detection_method: str = "legacy_slots"
 
     @property
     def phase_map(self) -> list[dict]:
@@ -68,13 +77,23 @@ class PhaseDetectionResult:
 
     def limitation_notes(self) -> list[str]:
         notes: list[str] = []
+        unvalidated = [
+            phase for phase, info in self.validation.items() if not info.get("validated", False)
+        ]
+        if unvalidated:
+            notes.append(
+                "Some phase keyframes were not pose-validated; Gemini should rely on full video for: "
+                + ", ".join(unvalidated)
+                + "."
+            )
         impact = self.get("impact") or self.get("impact_window_estimate")
         if impact and (
             impact.phase == "impact_window_estimate"
             or impact.confidence < IMPACT_CONFIDENCE_THRESHOLD
+            or not impact.pose_validated
         ):
             notes.append(
-                "Impact frame was not clearly visible, so impact feedback is limited."
+                "Impact frame was not clearly visible or validated, so impact feedback is limited."
             )
         finish = self.get("finish")
         if finish and (not finish.person_visible or finish.confidence < PHASE_CONFIDENCE_LOW):
@@ -118,7 +137,6 @@ def _dedupe_early_phase_slots(
     impact_idx: int,
     adjusted: set[str],
 ) -> None:
-    """Ensure setup-to-downswing slots stay unique without reshuffling finish."""
     candidate_count = len(candidates)
     if candidate_count == 0:
         return
@@ -167,7 +185,6 @@ def _resolve_slot_collisions(
     peak_motion_idx: int,
     peak_rotation_idx: int,
 ) -> tuple[int, set[str]]:
-    """Ensure distinct frame indices for phases that audit treats as independent."""
     adjusted: set[str] = set()
     candidate_count = len(candidates)
     if candidate_count == 0:
@@ -238,16 +255,134 @@ def _frame_confidence(
     return confidence, person_visible, notes
 
 
-def detect_swing_phases(
+def _build_phase_result(
+    frames: list[np.ndarray],
+    slot_indices: dict[str, int],
+    impact_idx: int,
+    *,
+    pose_sequence: PoseSequence | None,
+    validation: dict[str, dict[str, Any]],
+    timeline: dict[str, Any],
+    detection_method: str,
+    adjusted_phases: set[str] | None = None,
+) -> PhaseDetectionResult:
+    adjusted_phases = adjusted_phases or set()
+    impact_conf, impact_visible, impact_notes = _frame_confidence(
+        frames, impact_idx, pose_sequence
+    )
+    impact_validated = validation.get("impact", {}).get("validated", False)
+    if "impact" in adjusted_phases:
+        impact_conf = min(impact_conf, COLLISION_CONFIDENCE_CAP)
+        impact_notes = (
+            f"{impact_notes} {COLLISION_ADJUSTMENT_NOTE}".strip()
+            if impact_notes
+            else COLLISION_ADJUSTMENT_NOTE
+        )
+        impact_validated = False
+
+    use_exact_impact = (
+        impact_conf >= IMPACT_CONFIDENCE_THRESHOLD
+        and impact_visible
+        and impact_validated
+    )
+    impact_phase_name = "impact" if use_exact_impact else "impact_window_estimate"
+    if not use_exact_impact and not impact_notes:
+        impact_notes = "Impact estimated from motion peak; exact contact not confirmed."
+
+    phases: list[PhaseFrame] = []
+    keyframe_indices: dict[str, int] = {}
+
+    for phase_name in FULL_SWING_PHASE_ORDER:
+        if phase_name == "impact":
+            idx = impact_idx
+            conf, visible, notes = impact_conf, impact_visible, impact_notes
+            stored = impact_phase_name
+            pose_validated = impact_validated
+        else:
+            idx = slot_indices[phase_name]
+            conf, visible, notes = _frame_confidence(frames, idx, pose_sequence)
+            stored = phase_name
+            pose_validated = validation.get(phase_name, {}).get("validated", False)
+            if phase_name in adjusted_phases:
+                conf = min(conf, COLLISION_CONFIDENCE_CAP)
+                pose_validated = False
+                notes = (
+                    f"{notes} {COLLISION_ADJUSTMENT_NOTE}".strip()
+                    if notes
+                    else COLLISION_ADJUSTMENT_NOTE
+                )
+
+        if pose_validated:
+            notes = f"{notes} {POSE_VALIDATED_NOTE}".strip() if notes else POSE_VALIDATED_NOTE
+        elif pose_sequence and pose_sequence.average_confidence >= POSE_PHASE_MIN_CONFIDENCE:
+            notes = f"{notes} {POSE_UNVALIDATED_NOTE}".strip() if notes else POSE_UNVALIDATED_NOTE
+
+        phases.append(
+            PhaseFrame(
+                phase=stored,
+                frame_index=idx,
+                confidence=conf,
+                person_visible=visible,
+                notes=notes,
+                pose_validated=pose_validated,
+            )
+        )
+        keyframe_indices[stored] = idx
+
+    if impact_phase_name != "impact" and "impact" in validation:
+        validation = {
+            **validation,
+            impact_phase_name: validation.get("impact", {}),
+        }
+
+    return PhaseDetectionResult(
+        phases=phases,
+        keyframe_indices=keyframe_indices,
+        validation=validation,
+        timeline=timeline,
+        detection_method=detection_method,
+    )
+
+
+def _detect_swing_phases_pose_timeline(
+    frames: list[np.ndarray],
+    window: SwingWindow,
+    pose_sequence: PoseSequence,
+) -> PhaseDetectionResult:
+    pick = pick_phases_from_pose_timeline(frames, window, pose_sequence)
+    slot_indices = {k: v for k, v in pick.indices.items() if k != "impact"}
+    impact_idx = pick.indices["impact"]
+
+    agent_log(
+        hypothesis_id="H3",
+        location="phase_detector.py:pose_timeline",
+        message="pose timeline phase assignment",
+        data={
+            "indices": pick.indices,
+            "validation": pick.validation,
+            "method": pick.method,
+        },
+    )
+
+    return _build_phase_result(
+        frames,
+        slot_indices,
+        impact_idx,
+        pose_sequence=pose_sequence,
+        validation=pick.validation,
+        timeline=pick.timeline,
+        detection_method=pick.method,
+    )
+
+
+def _detect_swing_phases_legacy(
     frames: list[np.ndarray],
     window: SwingWindow,
     pose_sequence: PoseSequence | None = None,
 ) -> PhaseDetectionResult:
-    """Map swing phases within the detected window using motion and pose heuristics."""
     candidates = _candidate_indices(window)
     motions = [frame_motion_score(frames, i) for i in candidates]
     setup_center = score_frame_person(frames[candidates[0]]).center
-
     setup_hip_angle = hip_line_angle_for_frame(pose_sequence, candidates[0]) if pose_sequence else None
 
     rotations = [
@@ -256,8 +391,7 @@ def detect_swing_phases(
     ]
 
     peak_motion_idx = int(np.argmax(motions))
-
-    if pose_sequence and pose_sequence.average_confidence >= 0.45:
+    if pose_sequence and pose_sequence.average_confidence >= POSE_PHASE_MIN_CONFIDENCE:
         wrist_heights = [wrist_height_proxy(pose_sequence, idx) for idx in candidates]
         backswing_end = max(peak_motion_idx, 1)
         peak_rotation_idx = int(np.argmin(wrist_heights[:backswing_end]))
@@ -281,81 +415,48 @@ def detect_swing_phases(
         peak_motion_idx,
         peak_rotation_idx,
     )
-    # region agent log
-    agent_log(
-        hypothesis_id="H1",
-        location="phase_detector.py:post_collision",
-        message="slot assignment after collision resolve",
-        data={
-            "window_start": window.start_frame,
-            "window_end": window.end_frame,
-            "candidates": candidates,
-            "peak_motion_idx": peak_motion_idx,
-            "peak_rotation_idx": peak_rotation_idx,
-            "slot_indices": dict(slot_indices),
-            "impact_idx": impact_idx,
-            "adjusted_phases": sorted(adjusted_phases),
-        },
+
+    validation = {
+        phase: {
+            "validated": False,
+            "frame_index": slot_indices.get(phase, impact_idx if phase == "impact" else -1),
+            "pose_confidence": round(
+                pose_sequence.confidence_at(slot_indices.get(phase, impact_idx))
+                if pose_sequence
+                else 0.0,
+                3,
+            ),
+            "reason": "Legacy slot-based phase detection.",
+        }
+        for phase in FULL_SWING_PHASE_ORDER
+    }
+    validation["impact"] = {
+        **validation["impact"],
+        "frame_index": impact_idx,
+        "pose_confidence": round(pose_sequence.confidence_at(impact_idx), 3) if pose_sequence else 0.0,
+    }
+
+    return _build_phase_result(
+        frames,
+        slot_indices,
+        impact_idx,
+        pose_sequence=pose_sequence,
+        validation=validation,
+        timeline={},
+        detection_method="legacy_slots",
+        adjusted_phases=adjusted_phases,
     )
-    # endregion
-    impact_conf, impact_visible, impact_notes = _frame_confidence(
-        frames, impact_idx, pose_sequence
-    )
-    if "impact" in adjusted_phases:
-        impact_conf = min(impact_conf, COLLISION_CONFIDENCE_CAP)
-        impact_notes = (
-            f"{impact_notes} {COLLISION_ADJUSTMENT_NOTE}".strip()
-            if impact_notes
-            else COLLISION_ADJUSTMENT_NOTE
-        )
-    use_exact_impact = impact_conf >= IMPACT_CONFIDENCE_THRESHOLD and impact_visible
-    impact_phase_name = "impact" if use_exact_impact else "impact_window_estimate"
-    if not use_exact_impact and not impact_notes:
-        impact_notes = "Impact estimated from motion peak; exact contact not confirmed."
 
-    phases: list[PhaseFrame] = []
-    keyframe_indices: dict[str, int] = {}
 
-    for phase_name in FULL_SWING_PHASE_ORDER:
-        if phase_name == "impact":
-            idx = impact_idx
-            conf, visible, notes = impact_conf, impact_visible, impact_notes
-            stored = impact_phase_name
-        else:
-            idx = slot_indices[phase_name]
-            conf, visible, notes = _frame_confidence(frames, idx, pose_sequence)
-            stored = phase_name
-            if phase_name in adjusted_phases:
-                conf = min(conf, COLLISION_CONFIDENCE_CAP)
-                notes = (
-                    f"{notes} {COLLISION_ADJUSTMENT_NOTE}".strip()
-                    if notes
-                    else COLLISION_ADJUSTMENT_NOTE
-                )
-
-        phases.append(
-            PhaseFrame(
-                phase=stored,
-                frame_index=idx,
-                confidence=conf,
-                person_visible=visible,
-                notes=notes,
-            )
-        )
-        keyframe_indices[stored] = idx
-
-    # region agent log
-    index_groups: dict[int, list[str]] = {}
-    for phase in phases:
-        index_groups.setdefault(phase.frame_index, []).append(
-            f"{phase.phase}:{round(phase.confidence, 3)}"
-        )
-    agent_log(
-        hypothesis_id="H2",
-        location="phase_detector.py:final_phase_map",
-        message="final phase index groups",
-        data={"index_groups": {str(k): v for k, v in index_groups.items()}},
-    )
-    # endregion
-
-    return PhaseDetectionResult(phases=phases, keyframe_indices=keyframe_indices)
+def detect_swing_phases(
+    frames: list[np.ndarray],
+    window: SwingWindow,
+    pose_sequence: PoseSequence | None = None,
+) -> PhaseDetectionResult:
+    """Map swing phases within the detected window using pose timeline or legacy heuristics."""
+    if pose_sequence and pose_sequence.average_confidence >= POSE_PHASE_MIN_CONFIDENCE:
+        try:
+            return _detect_swing_phases_pose_timeline(frames, window, pose_sequence)
+        except ValueError:
+            pass
+    return _detect_swing_phases_legacy(frames, window, pose_sequence)
