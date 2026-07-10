@@ -5,6 +5,9 @@ const REQUIRED_SERVER_ENV = [
   "NEXT_PUBLIC_APP_URL",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
+] as const;
+
+const RECOMMENDED_SERVER_ENV = [
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
 ] as const;
@@ -14,5 +17,11 @@ export function assertServerEnvironment(): void {
   const missing = REQUIRED_SERVER_ENV.filter((name) => !process.env[name]?.trim());
   if (missing.length > 0) {
     throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+  }
+  const missingRecommended = RECOMMENDED_SERVER_ENV.filter((name) => !process.env[name]?.trim());
+  if (missingRecommended.length > 0) {
+    console.error(
+      `Missing recommended production environment variables (using in-memory rate limits): ${missingRecommended.join(", ")}`
+    );
   }
 }

@@ -116,13 +116,14 @@ test("login and signup run through rate-limited server routes", async () => {
   assert.match(signupPage, /Check your email/);
 });
 
-test("production rate limiting requires Upstash and fails closed when unavailable", async () => {
+test("production rate limiting prefers Upstash and falls back to memory", async () => {
   const limiter = await readFile(new URL("../src/lib/rate-limit.ts", import.meta.url), "utf8");
   const env = await readFile(new URL("../src/lib/env.ts", import.meta.url), "utf8");
 
   assert.match(limiter, /enforceMemoryRateLimit/);
   assert.match(limiter, /isProduction/);
-  assert.match(limiter, /status: 503/);
+  assert.doesNotMatch(limiter, /Service temporarily unavailable/);
+  assert.match(env, /RECOMMENDED_SERVER_ENV/);
   assert.match(env, /"UPSTASH_REDIS_REST_URL"/);
   assert.match(env, /"UPSTASH_REDIS_REST_TOKEN"/);
 });
