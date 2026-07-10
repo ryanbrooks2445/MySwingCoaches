@@ -5,6 +5,8 @@ const REQUIRED_SERVER_ENV = [
   "NEXT_PUBLIC_APP_URL",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
 ] as const;
 
 export function assertServerEnvironment(): void {

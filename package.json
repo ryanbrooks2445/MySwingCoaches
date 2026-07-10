@@ -14,9 +14,11 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.mjs tests/*.test.ts",
     "test:python": "PYTHONPATH=analysis-service python3 -m pytest analysis-service/tests -q",
+    "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:python && npm run build"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.65.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.1",
     "clsx": "^2.1.1",
@@ -25,10 +27,12 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.1",
+    "resend": "^6.17.2",
     "stripe": "^22.2.0",
     "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.0.17",
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.12",

@@ -31,53 +31,56 @@ export function AppNav() {
   }
 
   return (
-    <header className="border-b border-[var(--color-border)] bg-[var(--color-card)]/80 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-card)]/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <Link href="/dashboard" className="text-lg font-semibold tracking-tight">
+        <Link href="/dashboard" className="font-display text-lg font-bold tracking-tight">
           {APP_NAME}
         </Link>
-        <nav className="hidden items-center gap-5 md:flex">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "text-sm transition-colors",
-                pathname === link.href
-                  ? "font-medium text-[var(--color-foreground)]"
-                  : "text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+        <nav className="hidden items-center gap-1 md:flex">
+          {links.map((link) => {
+            const active = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "rounded-full px-3.5 py-2 text-sm transition-colors",
+                  active
+                    ? "bg-[var(--color-accent-muted)] font-medium text-[var(--color-accent-deep)]"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                )}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
           <Button
             type="button"
             variant="ghost"
             size="sm"
             disabled={signingOut}
             onClick={handleSignOut}
-            className="text-[var(--color-muted)]"
+            className="ml-2 text-[var(--color-muted)]"
           >
             {signingOut ? "Signing out…" : "Sign out"}
           </Button>
         </nav>
         <details className="relative md:hidden">
           <summary
-            className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--color-border)]"
+            className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-background)]"
             aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </summary>
-          <nav className="absolute right-0 z-20 mt-2 w-52 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-2 shadow-lg">
+          <nav className="absolute right-0 z-20 mt-2 w-52 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-2 shadow-xl">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 className={cn(
-                  "block rounded-md px-3 py-3 text-sm",
+                  "block rounded-xl px-3 py-3 text-sm transition-colors",
                   pathname === link.href
-                    ? "bg-[var(--color-accent-muted)] font-medium"
+                    ? "bg-[var(--color-accent-muted)] font-medium text-[var(--color-accent-deep)]"
                     : "text-[var(--color-muted)]"
                 )}
               >
@@ -88,7 +91,7 @@ export function AppNav() {
               type="button"
               disabled={signingOut}
               onClick={handleSignOut}
-              className="block w-full rounded-md px-3 py-3 text-left text-sm text-[var(--color-muted)]"
+              className="block w-full rounded-xl px-3 py-3 text-left text-sm text-[var(--color-muted)]"
             >
               {signingOut ? "Signing out…" : "Sign out"}
             </button>

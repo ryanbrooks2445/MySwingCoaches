@@ -50,6 +50,7 @@ export async function enforceRateLimit(
   const key = `${options.scope}:${options.identifier || clientIp(request)}`;
   const upstashUrl = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, "");
   const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const isProduction = process.env.NODE_ENV === "production";
 
   if (upstashUrl && upstashToken) {
     try {
@@ -79,9 +80,27 @@ export async function enforceRateLimit(
         scope: options.scope,
         status: response.status,
       });
+      if (isProduction) {
+        return NextResponse.json(
+          { error: "Service temporarily unavailable. Please try again shortly." },
+          { status: 503 }
+        );
+      }
     } catch {
       console.warn("rate_limit_provider_unreachable", { scope: options.scope });
+      if (isProduction) {
+        return NextResponse.json(
+          { error: "Service temporarily unavailable. Please try again shortly." },
+          { status: 503 }
+        );
+      }
     }
+  } else if (isProduction) {
+    console.error("rate_limit_upstash_not_configured", { scope: options.scope });
+    return NextResponse.json(
+      { error: "Service temporarily unavailable. Please try again shortly." },
+      { status: 503 }
+    );
   } else {
     console.warn("rate_limit_upstash_not_configured", { scope: options.scope });
   }

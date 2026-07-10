@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { Upload } from "lucide-react";
 import { AppNav } from "@/components/AppNav";
+import { PageHero } from "@/components/PageHero";
+import { Reveal } from "@/components/Reveal";
 import { SwingCard } from "@/components/SwingCard";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -41,36 +44,41 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main id="main-content" className="mx-auto max-w-6xl px-4 py-8 sm:py-12">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold">
-              Welcome{profile?.display_name ? `, ${profile.display_name}` : ""}
-            </h1>
-            <p className="mt-1 text-[var(--color-muted)]">
-              {subscription
-                ? (() => {
-                    const remaining = analysisCreditsRemaining(subscription);
-                    if (remaining === "unlimited") return "Unlimited analyses";
-                    if (remaining > 0) {
-                      return `${remaining} upload${remaining === 1 ? "" : "s"} ready`;
-                    }
-                    const price = getNextAnalysisPriceDisplay(
-                      subscription.analyses_used,
-                      subscription.analyses_limit
-                    );
-                    return `Buy your next analysis — ${price}`;
-                  })()
-                : "Create your profile, then buy your first analysis"}
-            </p>
-          </div>
+          <Reveal immediate>
+            <PageHero
+              eyebrow="Your dashboard"
+              title={`Welcome${profile?.display_name ? `, ${profile.display_name}` : ""}`}
+              description={
+                subscription
+                  ? (() => {
+                      const remaining = analysisCreditsRemaining(subscription);
+                      if (remaining === "unlimited") return "Unlimited analyses — upload whenever you're ready.";
+                      if (remaining > 0) {
+                        return `${remaining} upload${remaining === 1 ? "" : "s"} ready to analyze.`;
+                      }
+                      const price = getNextAnalysisPriceDisplay(
+                        subscription.analyses_used,
+                        subscription.analyses_limit
+                      );
+                      return `Buy your next analysis — ${price}`;
+                    })()
+                  : "Create your profile, then buy your first analysis."
+              }
+            />
+          </Reveal>
           <Link href="/upload">
-            <Button>Upload swing</Button>
+            <Button variant="cta" className="group rounded-full">
+              <Upload className="mr-2 h-4 w-4" />
+              Upload swing
+            </Button>
           </Link>
         </div>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-3">
-          <Card className="md:col-span-2">
+        <div className="mt-10 grid gap-6 md:grid-cols-3">
+          <Reveal className="md:col-span-2" delay={80}>
+            <Card className="rounded-3xl">
             <p className="text-sm text-[var(--color-muted)]">
               {currentFocus ? "Your focus" : "Get started"}
             </p>
@@ -91,22 +99,27 @@ export default async function DashboardPage() {
               </>
             ) : (
               <p className="mt-2 text-[var(--color-muted)]">
-                Upload a swing to get your kinesthetic blueprint and 7-day plan.
+                Upload a swing to get your kinesthetic blueprint and coaching read.
               </p>
             )}
           </Card>
-          <Card>
-            <p className="text-sm text-[var(--color-muted)]">Swings analyzed</p>
-            <p className="mt-2 text-4xl font-semibold">{reports?.length ?? 0}</p>
+          </Reveal>
+          <Reveal delay={120}>
+            <Card className="rounded-3xl">
+              <p className="text-sm text-[var(--color-muted)]">Swings analyzed</p>
+              <p className="mt-2 font-display text-5xl font-bold text-[var(--color-accent-deep)]">
+                {reports?.length ?? 0}
+              </p>
             <Link href="/progress" className="mt-4 inline-block text-sm text-[var(--color-accent)] hover:underline">
               View history →
             </Link>
           </Card>
+          </Reveal>
         </div>
 
-        <section className="mt-10">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold">Recent swings</h2>
+        <section className="mt-12">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-xl font-semibold">Recent swings</h2>
             {(reports?.length ?? 0) > 0 && (
               <Link
                 href="/progress"
@@ -117,10 +130,10 @@ export default async function DashboardPage() {
             )}
           </div>
           {!reports?.length ? (
-            <Card className="text-center">
+            <Card className="rounded-3xl text-center">
               <p className="text-[var(--color-muted)]">No swings yet. Upload your first video to get started.</p>
-              <Link href="/upload" className="mt-4 inline-block">
-                <Button>Upload swing</Button>
+              <Link href="/upload" className="mt-5 inline-block">
+                <Button variant="cta" className="rounded-full">Upload swing</Button>
               </Link>
             </Card>
           ) : (

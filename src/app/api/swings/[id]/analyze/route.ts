@@ -36,6 +36,19 @@ export async function POST(
       { status: 410 }
     );
   }
+  if (report.status === "awaiting_payment") {
+    const { data: started, error } = await service.rpc("service_start_queued_analysis", {
+      p_report_id: reportId,
+      p_user_id: user.id,
+    });
+    if (error || !started) {
+      return NextResponse.json(
+        { error: "Payment is required before analysis can start.", needsCheckout: true },
+        { status: 402 }
+      );
+    }
+    return NextResponse.json({ queued: true });
+  }
   if (report.status !== "failed") {
     return NextResponse.json({ queued: report.status === "processing" });
   }

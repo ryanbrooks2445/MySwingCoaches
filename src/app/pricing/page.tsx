@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
 import { PublicHeader } from "@/components/PublicHeader";
+import { PageHero } from "@/components/PageHero";
+import { Reveal } from "@/components/Reveal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
+import { trackEvent } from "@/lib/analytics";
 import { createClient } from "@/lib/supabase/client";
 import {
   PRICE_ANNUAL_UNLIMITED_DISPLAY,
@@ -112,6 +115,7 @@ function PricingContent() {
       }
 
       if (checkoutRes.ok && checkoutData.url) {
+        trackEvent("checkout_start", { product });
         window.location.href = checkoutData.url as string;
         return;
       }
@@ -151,28 +155,26 @@ function PricingContent() {
   return (
     <div className="min-h-screen">
       {signedIn ? <AppNav /> : <PublicHeader />}
-      <main className="mx-auto max-w-4xl px-4 py-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-semibold">Pricing</h1>
-          <p className="mt-2 text-[var(--color-muted)]">
-            Pay per swing or go unlimited for the year.
-          </p>
-          <p className="mt-2 text-xs text-[var(--color-muted)]">
-            Secure checkout powered by Stripe
-          </p>
-          <p className="mt-3 text-sm text-[var(--color-muted)]">
-            If analysis cannot be completed after automatic retries, your credit is restored.
-          </p>
-        </div>
+      <main id="main-content" className="mx-auto max-w-4xl px-4 py-10 sm:py-14">
+        <Reveal immediate>
+          <PageHero
+            eyebrow="Simple, honest pricing"
+            title="Pay per swing, or go unlimited"
+            description="Secure checkout powered by Stripe. If analysis cannot be completed after automatic retries, your credit is restored."
+            centered
+          />
+        </Reveal>
 
         {message && (
-          <div className="mx-auto mt-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-3 text-sm">
-            {message}
-          </div>
+          <Reveal immediate>
+            <div className="mx-auto mt-8 max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-3 text-center text-sm">
+              {message}
+            </div>
+          </Reveal>
         )}
 
         {creditsRemaining === "unlimited" && (
-          <p className="mx-auto mt-4 text-center text-sm text-[var(--color-accent)]">
+          <p className="mx-auto mt-6 text-center text-sm font-medium text-[var(--color-accent)]">
             Unlimited analyses active
             {subscription?.period_end
               ? ` until ${new Date(subscription.period_end).toLocaleDateString()}`
@@ -185,7 +187,7 @@ function PricingContent() {
         )}
 
         {creditsRemaining !== null && creditsRemaining !== "unlimited" && creditsRemaining > 0 && (
-          <p className="mx-auto mt-4 text-center text-sm text-[var(--color-accent)]">
+          <p className="mx-auto mt-6 text-center text-sm font-medium text-[var(--color-accent)]">
             {creditsRemaining} credit{creditsRemaining === 1 ? "" : "s"} ready —{" "}
             <Link href="/upload" className="underline">
               upload now
@@ -194,50 +196,62 @@ function PricingContent() {
         )}
 
         {annualActive && (
-          <div className="mx-auto mt-4 flex justify-center">
+          <div className="mx-auto mt-6 flex justify-center">
             <Button variant="secondary" disabled={portalLoading} onClick={openBillingPortal}>
               {portalLoading ? "Opening portal..." : "Manage subscription"}
             </Button>
           </div>
         )}
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
-          <Card className="flex flex-col text-center">
-            <h2 className="text-xl font-semibold">Per swing</h2>
-            <p className="mt-4 text-5xl font-semibold">{PRICE_PER_ANALYSIS_DISPLAY}</p>
+        <div className="mx-auto mt-12 grid max-w-3xl items-center gap-6 md:grid-cols-2">
+          <Reveal className="flex flex-col rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+            <h2 className="font-display text-lg font-semibold">Per swing</h2>
+            <p className="mt-4 font-display text-5xl font-bold text-[var(--color-accent-deep)]">
+              {PRICE_PER_ANALYSIS_DISPLAY}
+            </p>
             <p className="mt-1 text-sm text-[var(--color-muted)]">per video upload</p>
             <ul className="mx-auto mt-8 max-w-sm flex-1 space-y-2 text-left text-sm text-[var(--color-muted)]">
               <li>• Full swing, chipping, or putting — same price</li>
-              <li>• One priority, feel, drill, and 7-day plan</li>
+              <li>• One priority, feel, and drill</li>
               <li>• Buy only when you need an analysis</li>
               <li>• Private source video removed after 30 days</li>
             </ul>
             <Button
-              className="mt-8 w-full"
-              disabled={loadingProduct !== null}
+              className="mt-8 w-full rounded-full"
+              variant="secondary"
+              disabled={loadingProduct !== null || creditsRemaining === "unlimited"}
               onClick={() => startCheckout("swing_upload")}
             >
-              {loadingProduct === "swing_upload"
-                ? "Redirecting to checkout..."
-                : `Buy 1 analysis — ${PRICE_PER_ANALYSIS_DISPLAY}`}
+              {creditsRemaining === "unlimited"
+                ? "Included with unlimited"
+                : loadingProduct === "swing_upload"
+                  ? "Redirecting to checkout..."
+                  : `Buy 1 analysis — ${PRICE_PER_ANALYSIS_DISPLAY}`}
             </Button>
-          </Card>
+          </Reveal>
 
-          <Card className="flex flex-col border-[var(--color-accent)]/40 text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+          <Reveal
+            delay={120}
+            className="ring-gradient relative flex flex-col rounded-3xl bg-[var(--color-ink)] p-8 text-center text-white shadow-2xl md:scale-[1.03]"
+          >
+            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[var(--color-emerald)] to-[var(--color-lime)] px-4 py-1 text-xs font-bold uppercase tracking-wide text-[var(--color-ink)]">
               Best value
+            </span>
+            <h2 className="mt-2 font-display text-lg font-semibold">Unlimited annual</h2>
+            <p className="mt-4 font-display text-5xl font-bold">
+              {PRICE_ANNUAL_UNLIMITED_DISPLAY}
+              <span className="text-lg font-medium text-white/60">/yr</span>
             </p>
-            <h2 className="mt-2 text-xl font-semibold">Unlimited annual</h2>
-            <p className="mt-4 text-5xl font-semibold">{PRICE_ANNUAL_UNLIMITED_DISPLAY}</p>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">per year · unlimited uploads</p>
-            <ul className="mx-auto mt-8 max-w-sm flex-1 space-y-2 text-left text-sm text-[var(--color-muted)]">
+            <p className="mt-1 text-sm text-white/60">unlimited uploads · cancel anytime</p>
+            <ul className="mx-auto mt-8 max-w-sm flex-1 space-y-2 text-left text-sm text-white/70">
               <li>• Unlimited swing analyses for 12 months</li>
               <li>• Full swing, chipping, and putting included</li>
               <li>• Auto-renews yearly — cancel anytime in Stripe</li>
               <li>• Same coach-style reports every upload</li>
             </ul>
             <Button
-              className="mt-8 w-full"
+              className="mt-8 w-full rounded-full"
+              variant="cta"
               disabled={loadingProduct !== null || annualActive}
               onClick={() => startCheckout(PRODUCT_ANNUAL_UNLIMITED)}
             >
@@ -247,38 +261,43 @@ function PricingContent() {
                   ? "Redirecting to checkout..."
                   : `Subscribe — ${PRICE_ANNUAL_UNLIMITED_DISPLAY}/year`}
             </Button>
-          </Card>
+          </Reveal>
         </div>
 
-        <Link href="/upload" className="mt-6 block text-center text-sm text-[var(--color-accent)] hover:underline">
+        <Link
+          href="/upload"
+          className="mt-8 block text-center text-sm font-medium text-[var(--color-accent)] hover:underline"
+        >
           Go to upload →
         </Link>
 
-        <p className="mx-auto mt-6 max-w-2xl text-center text-xs leading-relaxed text-[var(--color-muted)]">
+        <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-[var(--color-muted)]">
           AI-generated coaching guidance is not a guaranteed performance result or a replacement
           for instruction from a certified golf professional. By purchasing, you agree to the{" "}
           <Link href="/terms" className="underline">Terms</Link> and{" "}
           <Link href="/refund-policy" className="underline">Refund Policy</Link>.
         </p>
 
-        <Card className="mt-8">
-          <h2 className="text-lg font-semibold">Modes</h2>
-          <ul className="mt-4 space-y-3 text-sm text-[var(--color-muted)]">
-            {SWING_MODES.map((mode) => (
-              <li key={mode}>
-                <span className="font-medium text-[var(--color-foreground)]">
-                  {SWING_MODE_LABELS[mode]}
-                </span>
-                {" — "}
-                {mode === "full_swing"
-                  ? "Driver through wedges — full motion."
-                  : mode === "chipping"
-                    ? "Short game around the green."
-                    : "Stroke mechanics on the green."}
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <Reveal delay={80}>
+          <Card className="mt-10 rounded-3xl">
+            <h2 className="font-display text-lg font-semibold">Modes</h2>
+            <ul className="mt-4 space-y-3 text-sm text-[var(--color-muted)]">
+              {SWING_MODES.map((mode) => (
+                <li key={mode}>
+                  <span className="font-medium text-[var(--color-foreground)]">
+                    {SWING_MODE_LABELS[mode]}
+                  </span>
+                  {" — "}
+                  {mode === "full_swing"
+                    ? "Driver through wedges — full motion."
+                    : mode === "chipping"
+                      ? "Short game around the green."
+                      : "Stroke mechanics on the green."}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Reveal>
       </main>
     </div>
   );
@@ -286,7 +305,15 @@ function PricingContent() {
 
 export default function PricingPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen" />}>
+    <Suspense
+      fallback={
+        <div className="mx-auto flex min-h-screen max-w-4xl flex-col items-center justify-center gap-3 px-4 text-center">
+          <div className="h-8 w-48 animate-pulse rounded-full bg-[var(--color-border)]" />
+          <div className="h-12 w-72 animate-pulse rounded-2xl bg-[var(--color-border)]" />
+          <p className="text-sm text-[var(--color-muted)]">Loading pricing…</p>
+        </div>
+      }
+    >
       <PricingContent />
     </Suspense>
   );

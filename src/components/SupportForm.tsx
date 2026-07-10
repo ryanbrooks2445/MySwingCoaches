@@ -42,7 +42,7 @@ export function SupportForm() {
           autoComplete="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-3"
+          className="input-field"
         />
       </label>
       <label className="block text-sm">
@@ -53,7 +53,7 @@ export function SupportForm() {
           maxLength={160}
           value={subject}
           onChange={(event) => setSubject(event.target.value)}
-          className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-3"
+          className="input-field"
         />
       </label>
       <label className="block text-sm">
@@ -65,11 +65,11 @@ export function SupportForm() {
           rows={6}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
-          className="mt-1 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-3"
+          className="input-field resize-y"
         />
       </label>
       {status && <p role="status" className="text-sm text-[var(--color-muted)]">{status}</p>}
-      <Button type="submit" disabled={sending}>
+      <Button type="submit" variant="cta" disabled={sending}>
         {sending ? "Submitting..." : "Submit request"}
       </Button>
     </form>

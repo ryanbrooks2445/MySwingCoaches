@@ -1,4 +1,6 @@
 import { AppNav } from "@/components/AppNav";
+import { PageHero } from "@/components/PageHero";
+import { Reveal } from "@/components/Reveal";
 import { ClearSwingHistoryButton, DeleteSwingButton } from "@/components/DeleteSwingButton";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -24,20 +26,23 @@ export default async function ProgressPage() {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main id="main-content" className="mx-auto max-w-6xl px-4 py-8 sm:py-12">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold">Training history</h1>
-            <p className="mt-1 text-[var(--color-muted)]">
-              Your coaching blueprints and weekly focuses over time
-            </p>
-          </div>
+          <Reveal immediate>
+            <PageHero
+              eyebrow="Progress"
+              title="Training history"
+              description="Your coaching blueprints and weekly focuses over time."
+            />
+          </Reveal>
           {reports && reports.length > 0 && <ClearSwingHistoryButton />}
         </div>
 
-        <section className="mt-10">
+        <section className="mt-12">
           {!reports?.length ? (
-            <Card className="text-center text-[var(--color-muted)]">No completed analyses yet.</Card>
+            <Card className="rounded-3xl text-center text-[var(--color-muted)]">
+              No completed analyses yet.
+            </Card>
           ) : (
             <>
               <div className="grid gap-3 md:hidden">
@@ -45,7 +50,7 @@ export default async function ProgressPage() {
                   const report = r as SwingReport;
                   const focus = getReportFocusLabel(report);
                   return (
-                    <Card key={r.id} className="p-4">
+                    <Card key={r.id} className="rounded-2xl p-4">
                       <p className="text-xs text-[var(--color-muted)]">
                         {new Date(r.created_at).toLocaleDateString()}
                       </p>
@@ -64,7 +69,7 @@ export default async function ProgressPage() {
                   );
                 })}
               </div>
-              <div className="hidden overflow-hidden rounded-lg border border-[var(--color-border)] md:block">
+              <div className="hidden overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-sm md:block">
                 <table className="w-full text-sm">
                 <thead className="bg-[var(--color-card)]">
                   <tr>

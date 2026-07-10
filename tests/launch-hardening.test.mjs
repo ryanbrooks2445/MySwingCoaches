@@ -108,16 +108,22 @@ test("login and signup run through rate-limited server routes", async () => {
 
   assert.match(loginRoute, /scope:\s*"auth-login"/);
   assert.match(signupRoute, /scope:\s*"auth-signup"/);
-  assert.match(signupRoute, /email_confirm:\s*true/);
+  assert.match(signupRoute, /auth\.signUp/);
+  assert.match(signupRoute, /needsEmailConfirmation/);
   assert.match(loginPage, /fetch\("\/api\/auth\/login"/);
   assert.match(signupPage, /fetch\("\/api\/auth\/signup"/);
+  assert.match(signupPage, /Check your email/);
 });
 
-test("production rate limiting falls back to memory when Upstash is unavailable", async () => {
+test("production rate limiting requires Upstash and fails closed when unavailable", async () => {
   const limiter = await readFile(new URL("../src/lib/rate-limit.ts", import.meta.url), "utf8");
+  const env = await readFile(new URL("../src/lib/env.ts", import.meta.url), "utf8");
 
   assert.match(limiter, /enforceMemoryRateLimit/);
-  assert.doesNotMatch(limiter, /Rate limiting is temporarily unavailable/);
+  assert.match(limiter, /isProduction/);
+  assert.match(limiter, /status: 503/);
+  assert.match(env, /"UPSTASH_REDIS_REST_URL"/);
+  assert.match(env, /"UPSTASH_REDIS_REST_TOKEN"/);
 });
 
 test("all private functions revoke inherited public execution", async () => {
@@ -127,7 +133,7 @@ test("all private functions revoke inherited public execution", async () => {
   assert.match(sql, /ALTER DEFAULT PRIVILEGES IN SCHEMA private/i);
 });
 
-test("failed direct uploads cancel the session and restore the reserved credit", async () => {
+test("failed direct uploads cancel the session", async () => {
   const cancelRoute = await readFile(
     new URL("../src/app/api/swings/upload-cancel/route.ts", import.meta.url),
     "utf8"
@@ -139,7 +145,10 @@ test("failed direct uploads cancel the session and restore the reserved credit",
   assert.match(cancelRoute, /session\.status === "registered"/);
   assert.match(uploadPage, /fetch\("\/api\/swings\/upload-cancel"/);
   assert.match(uploadPage, /Unexpected end of JSON input/);
-  assert.match(uploadPage, /Your credit was restored/);
+  assert.doesNotMatch(uploadPage, /Buy credit/);
+  assert.match(uploadPage, /Upload securely & analyze/);
+  assert.match(uploadPage, /Upload securely — pay to analyze/);
+  assert.match(uploadPage, /role="radiogroup"/);
 });
 
 test("direct signed uploads do not rely on Supabase storage JSON parsing", async () => {

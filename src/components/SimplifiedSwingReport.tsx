@@ -6,7 +6,6 @@ import { ReportMarkdown } from "@/components/ReportMarkdown";
 import { Card } from "@/components/ui/Card";
 import {
   cameraVerifiedSummary,
-  dedupePracticePlan,
   filterVisibleCheckpoints,
   filterVisibleEvidence,
   goodVsWorkBlocks,
@@ -15,6 +14,7 @@ import {
   resolveOneFeel,
   usableSwingFrames,
 } from "@/lib/report-display";
+import { formatPhaseLabel } from "@/lib/status-labels";
 import type { KeyFrameUrl, PhaseFrame, SimplifiedSwingReport as SimplifiedReport } from "@/lib/types";
 
 interface SimplifiedSwingReportProps {
@@ -60,11 +60,6 @@ export function SimplifiedSwingReport({
   const showPhaseCapture = hasUsablePhaseCapture(frames, phaseMap);
   const swingFrames = showPhaseCapture ? usableSwingFrames(frames, phaseMap) : [];
   const { working, work } = goodVsWorkBlocks(report.pga_analysis);
-  const plan = dedupePracticePlan(
-    report.practice_plan?.filter((item) => item.trim()) ?? [],
-    bestFix
-  );
-
   const showCameraVerified = Boolean(
     camera.flaw || camera.impact || camera.working || visibleEvidence.length > 0
   );
@@ -120,11 +115,11 @@ export function SimplifiedSwingReport({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={frame.url!}
-                      alt={`${frame.phase.replaceAll("_", " ")} swing frame`}
+                      alt={`${formatPhaseLabel(frame.phase)} swing frame`}
                       className="aspect-[4/3] w-full bg-black object-contain"
                     />
-                    <figcaption className="px-2 py-1.5 text-xs capitalize text-[var(--color-muted)]">
-                      {frame.phase.replaceAll("_", " ")}
+                    <figcaption className="px-2 py-1.5 text-xs text-[var(--color-muted)]">
+                      {formatPhaseLabel(frame.phase)}
                     </figcaption>
                   </figure>
                 ))}
@@ -202,20 +197,7 @@ export function SimplifiedSwingReport({
         </section>
       )}
 
-      {plan.length > 0 && (
-        <section className="space-y-3">
-          <BlockHeader emoji="🗓️" title="7-Day Plan" />
-          <Card>
-            <ul className="space-y-3 text-sm leading-relaxed text-[var(--color-foreground)]">
-              {plan.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </Card>
-        </section>
-      )}
-
-      {plan.length === 0 && report.next_swing_check.trim() && (
+      {report.next_swing_check.trim() && (
         <section className="space-y-3">
           <BlockHeader emoji="📹" title="Next Upload Goal" />
           <Card>

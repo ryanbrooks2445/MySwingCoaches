@@ -103,6 +103,28 @@ body {
   font-family: var(--font-sans);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+.focus\:not-sr-only:focus {
+  position: absolute;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
 button,
 a,
 input,
@@ -164,6 +186,29 @@ summary {
   border-radius: 9999px;
   filter: blur(64px);
   will-change: transform;
+}
+
+/* Consistent form fields across auth, support, and app pages */
+.input-field {
+  margin-top: 0.375rem;
+  width: 100%;
+  min-height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.input-field:focus {
+  border-color: var(--color-emerald);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  outline: none;
+}
+textarea.input-field {
+  min-height: 9rem;
+  resize: vertical;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -32,6 +32,13 @@ function parseCheckoutProduct(body: unknown): CheckoutProduct {
   return PRODUCT_SWING_UPLOAD;
 }
 
+function parseReportId(body: unknown): string | null {
+  if (!body || typeof body !== "object" || !("reportId" in body)) return null;
+  const reportId = (body as { reportId?: unknown }).reportId;
+  if (typeof reportId !== "string" || !reportId.trim()) return null;
+  return reportId.trim();
+}
+
 async function ensureStripeCustomer(
   user: { id: string; email?: string | null },
   existingCustomerId: string | null
@@ -77,9 +84,11 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   let product: CheckoutProduct = PRODUCT_SWING_UPLOAD;
+  let reportId: string | null = null;
   try {
     const body = await request.json();
     product = parseCheckoutProduct(body);
+    reportId = parseReportId(body);
   } catch {
     product = PRODUCT_SWING_UPLOAD;
   }
@@ -153,6 +162,25 @@ export async function POST(request: NextRequest) {
   }
 
   const unitAmount = PRICE_PER_ANALYSIS_CENTS;
+
+  if (reportId) {
+    const { data: report, error: reportError } = await serviceClient
+      .from("swing_reports")
+      .select("id, status")
+      .eq("id", reportId)
+      .eq("user_id", user.id)
+      .single();
+    if (reportError || !report) {
+      return NextResponse.json({ error: "Swing report not found." }, { status: 404 });
+    }
+    if (report.status !== "awaiting_payment") {
+      return NextResponse.json(
+        { error: "This swing does not need payment before analysis." },
+        { status: 409 }
+      );
+    }
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,
@@ -179,9 +207,14 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       product: PRODUCT_SWING_UPLOAD,
       expected_amount_cents: String(unitAmount),
+      ...(reportId ? { report_id: reportId } : {}),
     },
-    success_url: `${base}/pricing?checkout=success`,
-    cancel_url: `${base}/pricing?checkout=cancelled`,
+    success_url: reportId
+      ? `${base}/swings/${reportId}?checkout=success`
+      : `${base}/pricing?checkout=success`,
+    cancel_url: reportId
+      ? `${base}/swings/${reportId}?checkout=cancelled`
+      : `${base}/pricing?checkout=cancelled`,
   });
 
   if (!session.url) {

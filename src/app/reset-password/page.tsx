@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { AuthLayout } from "@/components/AuthLayout";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
@@ -15,9 +16,16 @@ function ResetPasswordForm() {
   const [status, setStatus] = useState<string | null>(null);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <h1 className="text-2xl font-semibold">
+    <AuthLayout
+      asideTitle={isUpdating ? "Almost there" : "We've got you"}
+      asideDescription={
+        isUpdating
+          ? "Choose a strong password and you'll be back to your swing reports in seconds."
+          : "Enter the email on your account and we'll send a secure reset link if it exists."
+      }
+    >
+      <Card className="ring-gradient w-full max-w-md rounded-3xl">
+        <h1 className="font-display text-2xl font-bold">
           {isUpdating ? "Choose a new password" : "Reset password"}
         </h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">
@@ -54,19 +62,22 @@ function ResetPasswordForm() {
               onChange={(event) =>
                 isUpdating ? setPassword(event.target.value) : setEmail(event.target.value)
               }
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3"
+              className="input-field"
             />
           </label>
           {status && <p role="status" className="text-sm text-[var(--color-muted)]">{status}</p>}
-          <Button type="submit" className="w-full">
+          <Button type="submit" variant="cta" className="w-full">
             {isUpdating ? "Update password" : "Send reset link"}
           </Button>
         </form>
-        <Link href="/login" className="mt-4 block text-center text-sm text-[var(--color-accent)]">
+        <Link
+          href="/login"
+          className="mt-4 block text-center text-sm font-medium text-[var(--color-accent)] hover:underline"
+        >
           Back to login
         </Link>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }
 

@@ -61,7 +61,7 @@ export function GoogleSignInButton({
       <Button
         type="button"
         variant="secondary"
-        className="w-full gap-2"
+        className="w-full gap-2 rounded-full"
         onClick={signIn}
         disabled={loading}
       >

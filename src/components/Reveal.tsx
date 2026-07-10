@@ -9,13 +9,23 @@ interface RevealProps {
   /** Stagger delay in milliseconds before the element animates in. */
   delay?: number;
   as?: ElementType;
+  /** When true, content is visible on first paint (use for above-the-fold heroes). */
+  immediate?: boolean;
 }
 
-export function Reveal({ children, className, delay = 0, as: Tag = "div" }: RevealProps) {
+export function Reveal({
+  children,
+  className,
+  delay = 0,
+  as: Tag = "div",
+  immediate = false,
+}: RevealProps) {
   const ref = useRef<HTMLElement | null>(null);
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(immediate);
 
   useEffect(() => {
+    if (immediate) return;
+
     const node = ref.current;
     if (!node) return;
 
@@ -38,12 +48,12 @@ export function Reveal({ children, className, delay = 0, as: Tag = "div" }: Reve
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [immediate]);
 
   return (
     <Tag
       ref={ref}
-      style={delay ? { transitionDelay: `${delay}ms` } : undefined}
+      style={delay && !immediate ? { transitionDelay: `${delay}ms` } : undefined}
       className={cn("reveal", visible && "is-visible", className)}
     >
       {children}

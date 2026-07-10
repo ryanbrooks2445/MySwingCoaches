@@ -51,7 +51,7 @@ function NextPhaseButton({
   const isLast = activeIndex >= stepsLength - 1;
   return (
     <Button size="lg" className={cn("w-full shadow-lg shadow-[var(--color-accent)]/20", className)} onClick={onClick}>
-      {isLast ? "Blueprint complete — go to this week’s plan" : "Next phase →"}
+      {isLast ? "Blueprint complete" : "Next phase →"}
     </Button>
   );
 }
@@ -112,7 +112,7 @@ export function BlueprintPhaseViewer({
           <div className="sticky top-0 z-10 -mx-1 rounded-xl border border-[var(--color-accent)]/40 bg-[var(--color-card)]/95 px-4 py-3 shadow-md backdrop-blur-sm">
             <p className="text-center text-sm font-medium text-[var(--color-foreground)]">
               {isLastPhase
-                ? "Last feel — lock it in, then open your weekly plan below"
+                ? "Last feel — lock it in, then review your next upload goal below"
                 : "Hit this feel at the range, then tap Next phase"}
             </p>
             <NextPhaseButton
@@ -189,7 +189,7 @@ export function BlueprintPhaseViewer({
           <StatusBadge status="locked_in" className="mb-3" />
           <p className="font-medium text-emerald-400">All blueprint phases locked in</p>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Scroll to <strong className="text-[var(--color-foreground)]">This week</strong> for your 7-day plan.
+            Scroll to <strong className="text-[var(--color-foreground)]">Next upload goal</strong> below when you are ready to film again.
           </p>
         </Card>
       )}

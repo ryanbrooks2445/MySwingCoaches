@@ -1,5 +1,8 @@
 "use client";
 
+import { formatPhaseLabel } from "@/lib/status-labels";
+import { cn } from "@/lib/utils";
+
 interface KeyFrameGalleryProps {
   frames: { phase: string; url: string | null }[];
   activePhase: string;
@@ -16,13 +19,14 @@ export function KeyFrameGallery({ frames, activePhase, onPhaseChange }: KeyFrame
           <button
             key={frame.phase}
             onClick={() => onPhaseChange(frame.phase)}
-            className={`rounded-full px-4 py-1.5 text-sm capitalize transition-colors ${
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm transition-colors",
               activePhase === frame.phase
                 ? "bg-[var(--color-accent)] text-white"
                 : "bg-[var(--color-border)]/50 hover:bg-[var(--color-border)]"
-            }`}
+            )}
           >
-            {frame.phase.replace("_", " ")}
+            {formatPhaseLabel(frame.phase)}
           </button>
         ))}
       </div>
@@ -32,7 +36,7 @@ export function KeyFrameGallery({ frames, activePhase, onPhaseChange }: KeyFrame
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={active.url}
-            alt={`Swing at ${active.phase}`}
+            alt={`Swing at ${formatPhaseLabel(active.phase)}`}
             className="h-full w-full object-contain"
           />
         ) : (
@@ -43,7 +47,7 @@ export function KeyFrameGallery({ frames, activePhase, onPhaseChange }: KeyFrame
       </div>
 
       <p className="text-sm text-[var(--color-muted)]">
-        Key moments from your swing video (evenly sampled). Coaching is based on the full video, not these stills alone.
+        Key moments from your swing video. Coaching is based on the full video, not these stills alone.
       </p>
     </div>
   );

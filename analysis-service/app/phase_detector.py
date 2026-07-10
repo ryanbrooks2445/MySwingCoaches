@@ -391,16 +391,42 @@ def _detect_swing_phases_legacy(
     ]
 
     peak_motion_idx = int(np.argmax(motions))
-    if pose_sequence and pose_sequence.average_confidence >= POSE_PHASE_MIN_CONFIDENCE:
-        wrist_heights = [wrist_height_proxy(pose_sequence, idx) for idx in candidates]
+    wrist_heights = (
+        [wrist_height_proxy(pose_sequence, idx) for idx in candidates]
+        if pose_sequence and pose_sequence.average_confidence >= POSE_PHASE_MIN_CONFIDENCE
+        else None
+    )
+    if wrist_heights is not None:
         backswing_end = max(peak_motion_idx, 1)
         peak_rotation_idx = int(np.argmin(wrist_heights[:backswing_end]))
     else:
         peak_rotation_idx = int(np.argmax(rotations[: max(peak_motion_idx + 1, 1)]))
 
+    # Address: quietest early candidate (not always slot 0).
+    early_end = max(1, min(len(candidates) // 3, peak_motion_idx))
+    address_slot = int(np.argmin(motions[:early_end]))
+    if wrist_heights is not None:
+        quiet_threshold = motions[address_slot] + 0.02
+        quiet_slots = [i for i in range(early_end) if motions[i] <= quiet_threshold]
+        if quiet_slots:
+            address_slot = max(quiet_slots, key=lambda i: wrist_heights[i])
+
+    # Takeaway: first candidate after address with rising motion / higher wrists.
+    takeaway_slot = min(address_slot + 1, len(candidates) - 1)
+    for slot in range(address_slot + 1, max(address_slot + 1, peak_rotation_idx)):
+        motion_rising = motions[slot] > motions[address_slot] + 0.01
+        wrists_rising = (
+            wrist_heights is not None
+            and wrist_heights[slot] < wrist_heights[address_slot] - 0.015
+        )
+        if motion_rising or wrists_rising:
+            takeaway_slot = slot
+            break
+    takeaway_slot = min(takeaway_slot, max(address_slot + 1, peak_rotation_idx - 1), len(candidates) - 1)
+
     slot_indices: dict[str, int] = {
-        "address": candidates[0],
-        "takeaway": candidates[min(1, len(candidates) - 1)],
+        "address": candidates[address_slot],
+        "takeaway": candidates[takeaway_slot],
         "top": candidates[peak_rotation_idx],
         "transition": candidates[min(peak_rotation_idx + 1, len(candidates) - 1)],
         "downswing": candidates[max(peak_rotation_idx, peak_motion_idx - 1)],

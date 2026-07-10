@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { DeleteSwingButton } from "@/components/DeleteSwingButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SWING_MODE_LABELS } from "@/lib/pricing";
+import { formatSwingStatus } from "@/lib/status-labels";
 import type { SwingReport, SwingVideo } from "@/lib/types";
 import { getReportFocusLabel } from "@/lib/coaching";
 
@@ -41,7 +42,7 @@ export function SwingCard({
           {report?.status === "ready" && focus ? (
             <StatusBadge status="current_focus" />
           ) : (
-            <p className="text-sm capitalize text-[var(--color-muted)]">{status}</p>
+            <p className="text-sm text-[var(--color-muted)]">{formatSwingStatus(status)}</p>
           )}
           {reportId && (
             <DeleteSwingButton reportId={reportId} label="Delete" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
 import { DeleteSwingButton } from "@/components/DeleteSwingButton";
 import { SimplifiedSwingReport } from "@/components/SimplifiedSwingReport";
@@ -9,8 +9,11 @@ import { SwingComparison } from "@/components/SwingComparison";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
+import { trackEvent } from "@/lib/analytics";
 import { getFeelBlueprint, getSimplifiedReport, getVisiblePhaseMap, parseCoachingContent } from "@/lib/coaching";
-import { SWING_MODE_LABELS } from "@/lib/pricing";
+import { SWING_MODE_LABELS, PRICE_PER_ANALYSIS_DISPLAY } from "@/lib/pricing";
+import { createClient } from "@/lib/supabase/client";
+import { formatPhaseLabel } from "@/lib/status-labels";
 import { logTrace } from "@/lib/trace";
 import { DISCLAIMER } from "@/lib/utils";
 import type { SwingReport } from "@/lib/types";
@@ -45,10 +48,10 @@ function AnalysisDebugPanel({ report, finalReport }: { report: SwingReport; fina
             <figure key={frame.phase} className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white">
               {frame.url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={frame.url} alt={`${frame.phase} debug frame`} className="aspect-[4/3] w-full object-contain bg-black" />
+                <img src={frame.url} alt={`${formatPhaseLabel(frame.phase)} debug frame`} className="aspect-[4/3] w-full object-contain bg-black" />
               ) : null}
               <figcaption className="px-2 py-1 text-xs text-[var(--color-muted)]">
-                {frame.phase.replaceAll("_", " ")}
+                {formatPhaseLabel(frame.phase)}
               </figcaption>
             </figure>
           ))}
@@ -65,6 +68,7 @@ function AnalysisDebugPanel({ report, finalReport }: { report: SwingReport; fina
 
 export default function SwingReportPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const reportId = params.id as string;
   const [report, setReport] = useState<SwingReport | null>(null);
@@ -78,6 +82,9 @@ export default function SwingReportPage() {
   const [drillVideoTitle, setDrillVideoTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
+  const [isCoachOrAdmin, setIsCoachOrAdmin] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     const res = await fetch(`/api/swings/${reportId}/status`);
@@ -106,8 +113,87 @@ export default function SwingReportPage() {
         status: data.report.status,
         ai_narrative_available: data.report.ai_narrative_available,
       });
+      if (data.report.status === "ready") {
+        trackEvent("report_ready");
+      }
     }
   }, [reportId]);
+
+  useEffect(() => {
+    const checkout = searchParams.get("checkout");
+    if (checkout === "success") {
+      setCheckoutMessage("Payment received. Starting your analysis...");
+      router.replace(`/swings/${reportId}`);
+      let attempts = 0;
+      const poll = window.setInterval(async () => {
+        attempts += 1;
+        const res = await fetch(`/api/swings/${reportId}/status`);
+        const data = await readApiResponse<{ report?: SwingReport }>(res);
+        if (data.report?.status === "processing") {
+          window.clearInterval(poll);
+          setReport(data.report);
+          setCheckoutMessage(null);
+          return;
+        }
+        if (attempts >= 15) {
+          window.clearInterval(poll);
+          setCheckoutMessage(
+            "Payment received. Analysis is taking longer than expected to start — refresh shortly."
+          );
+        }
+      }, 1500);
+      return () => window.clearInterval(poll);
+    }
+    if (checkout === "cancelled") {
+      setCheckoutMessage("Checkout cancelled. Your video is saved — pay when you're ready to analyze.");
+      router.replace(`/swings/${reportId}`);
+    }
+  }, [searchParams, reportId, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      if (!cancelled && profile && ["coach", "admin"].includes(profile.role)) {
+        setIsCoachOrAdmin(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function startCheckout() {
+    setCheckoutLoading(true);
+    setCheckoutMessage(null);
+    try {
+      const checkoutRes = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product: "swing_upload", reportId }),
+      });
+      const checkoutData = await readApiResponse<{ url?: string }>(checkoutRes);
+      if (checkoutRes.ok && checkoutData.url) {
+        trackEvent("checkout_start", { product: "swing_upload" });
+        window.location.href = checkoutData.url;
+        return;
+      }
+      throw new Error(checkoutData.error ?? "Checkout failed");
+    } catch (err) {
+      setCheckoutMessage(err instanceof Error ? err.message : "Could not start checkout");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
 
   useEffect(() => {
     fetchStatus();
@@ -117,11 +203,20 @@ export default function SwingReportPage() {
     return () => clearInterval(interval);
   }, [fetchStatus, report?.status]);
 
+  useEffect(() => {
+    if (report?.status !== "awaiting_payment") return;
+    async function tryStartWithCredit() {
+      const res = await fetch(`/api/swings/${reportId}/analyze`, { method: "POST" });
+      if (res.ok) await fetchStatus();
+    }
+    void tryStartWithCredit();
+  }, [report?.status, reportId, fetchStatus]);
+
   if (error) {
     return (
       <div className="min-h-screen">
         <AppNav />
-        <main className="mx-auto max-w-3xl px-4 py-8">
+        <main id="main-content" className="mx-auto max-w-3xl px-4 py-8">
           <Card className="text-center">
             <p className="text-red-500">{error}</p>
             <Button className="mt-4" onClick={fetchStatus}>
@@ -133,11 +228,61 @@ export default function SwingReportPage() {
     );
   }
 
-  if (!report || report.status === "processing") {
+  if (!report) {
     return (
       <div className="min-h-screen">
         <AppNav />
-        <main className="mx-auto max-w-3xl px-4 py-16 text-center">
+        <main id="main-content" className="mx-auto max-w-3xl px-4 py-16 text-center">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--color-border)] border-t-[var(--color-accent)]" />
+          <p className="mt-6 text-[var(--color-muted)]">Loading...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (report.status === "awaiting_payment") {
+    return (
+      <div className="min-h-screen">
+        <AppNav />
+        <main id="main-content" className="mx-auto max-w-3xl px-4 py-8">
+          <Card className="text-center">
+            <h1 className="text-2xl font-semibold">Your swing is uploaded</h1>
+            <p className="mt-3 text-[var(--color-muted)]">
+              Complete checkout to start your AI coaching analysis.
+            </p>
+            {report.swing_mode && (
+              <p className="mt-2 text-sm font-medium text-[var(--color-accent)]">
+                {SWING_MODE_LABELS[report.swing_mode]}
+              </p>
+            )}
+            {checkoutMessage && (
+              <p className="mt-4 text-sm text-[var(--color-muted)]">{checkoutMessage}</p>
+            )}
+            <Button
+              className="mt-6 w-full rounded-full sm:w-auto"
+              variant="cta"
+              size="lg"
+              disabled={checkoutLoading}
+              onClick={startCheckout}
+            >
+              {checkoutLoading
+                ? "Redirecting to checkout..."
+                : `Pay ${PRICE_PER_ANALYSIS_DISPLAY} & analyze`}
+            </Button>
+            <p className="mt-4 text-xs text-[var(--color-muted)]">
+              Secure checkout powered by Stripe. Your video stays private.
+            </p>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (report.status === "processing") {
+    return (
+      <div className="min-h-screen">
+        <AppNav />
+        <main id="main-content" className="mx-auto max-w-3xl px-4 py-16 text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--color-border)] border-t-[var(--color-accent)]" />
           <h1 className="mt-6 text-2xl font-semibold">Unlocking your analysis</h1>
           <p className="mt-2 text-[var(--color-muted)]">Usually 1–3 minutes.</p>
@@ -150,7 +295,7 @@ export default function SwingReportPage() {
     return (
       <div className="min-h-screen">
         <AppNav />
-        <main className="mx-auto max-w-3xl px-4 py-8">
+        <main id="main-content" className="mx-auto max-w-3xl px-4 py-8">
           <Card>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -192,12 +337,13 @@ export default function SwingReportPage() {
   const simplified = coaching ? getSimplifiedReport(coaching, report.phase_map) : null;
   const coachLetter = coaching ? getFeelBlueprint(coaching) : null;
   const debugEnabled =
-    searchParams.get("debug") === "1" || process.env.NEXT_PUBLIC_ANALYSIS_DEBUG === "true";
+    isCoachOrAdmin &&
+    (searchParams.get("debug") === "1" || process.env.NEXT_PUBLIC_ANALYSIS_DEBUG === "true");
 
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-3xl px-4 py-8">
+      <main id="main-content" className="mx-auto max-w-3xl px-4 py-8">
         {!report.ai_narrative_available && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
             {report.error_message

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   ArrowRight,
   CheckCircle2,
@@ -120,13 +121,23 @@ const faqs = [
   ["What if analysis fails?", "We retry automatically. If a report still can't be completed, your analysis credit is restored."],
   ["Are my videos public?", "No. Videos use private storage and short-lived signed links, then are removed after 30 days."],
   ["Is this a PGA lesson?", "No. It is AI-assisted coaching guidance and does not replace an in-person certified golf professional."],
+  [
+    "What's the difference between per-swing and unlimited?",
+    `Pay ${PRICE_PER_ANALYSIS_DISPLAY} per upload, or ${PRICE_ANNUAL_UNLIMITED_DISPLAY}/year for unlimited analyses. Cancel the annual plan anytime in Stripe.`,
+  ],
 ];
+
+export const metadata: Metadata = {
+  title: "AI Golf Swing Analysis",
+  description:
+    "Upload one swing. Get prioritized fixes, evidence from your own video, and drills you can use at the range — in minutes.",
+};
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen">
       <PublicHeader />
-      <main>
+      <main id="main-content">
         {/* ── Hero ───────────────────────────────────────────── */}
         <section className="relative overflow-hidden bg-[var(--color-ink)] text-white">
           {/* animated ambient glow */}
@@ -156,6 +167,7 @@ export default function LandingPage() {
           <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:py-28 lg:grid-cols-[1.05fr_0.95fr]">
             <div>
               <Reveal
+                immediate
                 as="p"
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-[var(--color-lime)] backdrop-blur"
               >
@@ -163,7 +175,7 @@ export default function LandingPage() {
                 Evidence-based AI swing analysis
               </Reveal>
 
-              <Reveal as="h1" delay={80} className="mt-7 font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
+              <Reveal immediate as="h1" className="mt-7 font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
                 Stop guessing.
                 <br />
                 Know <span className="text-gradient">exactly</span> what
@@ -171,13 +183,13 @@ export default function LandingPage() {
                 to practice next.
               </Reveal>
 
-              <Reveal as="p" delay={160} className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">
+              <Reveal immediate as="p" className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">
                 Upload one swing. We read it frame by frame and hand you a prioritized fix list —
                 what to work on first, the evidence from your own video, and clear steps for every
                 fix. The way a real coach would break it down. In minutes.
               </Reveal>
 
-              <Reveal delay={220} className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Reveal immediate className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Link href="/signup?redirect=/upload">
                   <Button
                     size="lg"
@@ -199,7 +211,7 @@ export default function LandingPage() {
                 </Link>
               </Reveal>
 
-              <Reveal delay={280} className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-white/60">
+              <Reveal immediate className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-white/60">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-[var(--color-lime)]" />
                   {PRICE_PER_ANALYSIS_DISPLAY} per swing
@@ -216,7 +228,7 @@ export default function LandingPage() {
             </div>
 
             {/* Floating live-report mockup */}
-            <Reveal delay={200} className="relative">
+            <Reveal immediate className="relative">
               <div className="animate-float ring-gradient rounded-3xl bg-[var(--color-ink-2)]/80 p-5 shadow-2xl backdrop-blur">
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-lime)]">

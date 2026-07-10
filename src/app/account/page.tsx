@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
+import { PageHero } from "@/components/PageHero";
+import { Reveal } from "@/components/Reveal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
@@ -17,9 +19,30 @@ export default function AccountPage() {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-2xl px-4 py-10">
-        <h1 className="text-3xl font-semibold">Account</h1>
-        <Card className="mt-8 border-red-500/30">
+      <main id="main-content" className="mx-auto max-w-2xl px-4 py-10 sm:py-12">
+        <Reveal immediate>
+          <PageHero
+            eyebrow="Settings"
+            title="Account"
+            description="Manage your ForeFixed account and data."
+          />
+        </Reveal>
+        <Reveal immediate>
+          <Card className="mt-10 rounded-3xl">
+            <h2 className="text-lg font-semibold">Billing</h2>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              Annual unlimited subscribers can manage renewal and cancellation in the Stripe customer
+              portal from the{" "}
+              <a href="/pricing" className="font-medium text-[var(--color-accent)] hover:underline">
+                Pricing
+              </a>{" "}
+              page. Per-swing purchases do not include a subscription portal — buy credits when you
+              need another analysis.
+            </p>
+          </Card>
+        </Reveal>
+        <Reveal immediate>
+          <Card className="mt-6 rounded-3xl border-red-500/30">
           <h2 className="text-lg font-semibold text-red-500">Delete account permanently</h2>
           <p className="mt-2 text-sm text-[var(--color-muted)]">
             This immediately deletes your account, reports, swing videos, and generated frames.
@@ -30,7 +53,7 @@ export default function AccountPage() {
             <input
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-3"
+              className="input-field"
             />
           </label>
           {error && <p role="alert" className="mt-3 text-sm text-red-500">{error}</p>}
@@ -59,6 +82,7 @@ export default function AccountPage() {
             {deleting ? "Deleting account..." : "Delete account"}
           </Button>
         </Card>
+        </Reveal>
       </main>
     </div>
   );

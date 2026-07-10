@@ -17,6 +17,12 @@ from app.swing_window import SwingWindow
 POSE_TIMELINE_MAX_POINTS = 60
 POSE_PHASE_MIN_CONFIDENCE = 0.45
 
+# Wrist y decreases as hands rise in the frame.
+TAKEAWAY_RISE_TARGET = 0.28
+TAKEAWAY_RISE_MIN = 0.10
+TAKEAWAY_RISE_MAX = 0.55
+ADDRESS_EARLY_FRACTION = 0.20
+
 PHASE_ORDER = (
     "address",
     "takeaway",
@@ -96,6 +102,80 @@ def _enforce_monotonic(local_indices: dict[str, int], window_indices: list[int])
     return {phase: window_indices[locals_map[phase]] for phase in PHASE_ORDER}
 
 
+def _pick_address_local(
+    motions: list[float],
+    wrist: list[float],
+    pose_sequence: PoseSequence,
+    window_indices: list[int],
+    motion_threshold: float,
+) -> int:
+    """Quiet early frame: lowest motion, preferring hands-down setup pose."""
+    n = len(window_indices)
+    moving_locals = [i for i, motion in enumerate(motions) if motion >= motion_threshold]
+    first_motion = moving_locals[0] if moving_locals else max(1, int(n * ADDRESS_EARLY_FRACTION))
+    search_end = max(1, min(first_motion, max(2, int(n * ADDRESS_EARLY_FRACTION))))
+
+    best_local = 0
+    best_score: tuple[float, float, float] | None = None
+    for local in range(0, search_end):
+        frame_idx = window_indices[local]
+        pose_conf = pose_sequence.confidence_at(frame_idx)
+        if pose_conf < 0.35 and local > 0:
+            continue
+        # Lower motion is better; higher wrist y (hands lower) is better; higher pose conf is better.
+        score = (motions[local], -wrist[local], -pose_conf)
+        if best_score is None or score < best_score:
+            best_score = score
+            best_local = local
+
+    return best_local
+
+
+def _pick_takeaway_local(
+    address_local: int,
+    top_local: int,
+    motions: list[float],
+    wrist: list[float],
+    motion_threshold: float,
+) -> int:
+    """Early club-away: ~20–35% of address→top wrist rise with motion started."""
+    span = max(1, top_local - address_local)
+    fallback = address_local + max(1, span // 4)
+
+    if top_local <= address_local + 1:
+        return fallback
+
+    address_wrist = wrist[address_local]
+    top_wrist = wrist[top_local]
+    # Wrist y drops as hands rise; rise amount is positive when top is higher.
+    wrist_travel = address_wrist - top_wrist
+    if wrist_travel < 0.02:
+        # Flat/unusable pose curve — fall back to span fraction.
+        return min(top_local - 1, fallback)
+
+    target_wrist = address_wrist - TAKEAWAY_RISE_TARGET * wrist_travel
+    search_start = address_local + 1
+    search_end = max(search_start + 1, top_local)
+
+    best_local = fallback
+    best_distance = float("inf")
+    for local in range(search_start, search_end):
+        rise_frac = (address_wrist - wrist[local]) / wrist_travel
+        if rise_frac < TAKEAWAY_RISE_MIN or rise_frac > TAKEAWAY_RISE_MAX:
+            continue
+        if motions[local] < motion_threshold * 0.5 and rise_frac < 0.15:
+            continue
+        distance = abs(wrist[local] - target_wrist)
+        # Prefer frames that have started moving.
+        if motions[local] < motion_threshold * 0.35:
+            distance += 0.05
+        if distance < best_distance:
+            best_distance = distance
+            best_local = local
+
+    return min(top_local - 1, max(address_local + 1, best_local))
+
+
 def pick_phases_from_pose_timeline(
     frames: list[np.ndarray],
     window: SwingWindow,
@@ -111,12 +191,17 @@ def pick_phases_from_pose_timeline(
     wrist = [wrist_height_proxy(pose_sequence, idx) for idx in window_indices]
 
     motion_threshold = max(0.06, float(np.percentile(motions, 65)) * 0.45)
-    moving_locals = [i for i, motion in enumerate(motions) if motion >= motion_threshold]
-    address_local = max(0, moving_locals[0] - 1) if moving_locals else 0
+    address_local = _pick_address_local(
+        motions, wrist, pose_sequence, window_indices, motion_threshold
+    )
 
     top_search_start = max(address_local + 2, int(n * 0.12))
     top_search_end = max(top_search_start + 4, int(n * 0.58))
     top_local = top_search_start + int(np.argmin(wrist[top_search_start:top_search_end]))
+
+    takeaway_local = _pick_takeaway_local(
+        address_local, top_local, motions, wrist, motion_threshold
+    )
 
     min_downswing_span = max(4, int(n * 0.08))
     impact_search_start = min(max(top_local + min_downswing_span, int(n * 0.35)), n - 3)
@@ -132,12 +217,11 @@ def pick_phases_from_pose_timeline(
     follow_span = max(2, finish_local - impact_local)
     early_follow_local = min(finish_local - 1, impact_local + max(1, follow_span // 2))
 
-    span_at = max(1, top_local - address_local)
     span_td = max(1, impact_local - top_local)
 
     local_indices = {
         "address": address_local,
-        "takeaway": address_local + max(1, span_at // 4),
+        "takeaway": takeaway_local,
         "top": top_local,
         "transition": top_local + max(1, span_td // 3),
         "downswing": top_local + max(2, (2 * span_td) // 3),
@@ -193,6 +277,17 @@ def validate_phase_assignments(
     top_idx = phase_indices.get("top")
     impact_idx = phase_indices.get("impact")
     address_idx = phase_indices.get("address")
+    takeaway_idx = phase_indices.get("takeaway")
+
+    early_motion_baseline = 0.0
+    if motion_curve is not None and len(motion_curve) >= 3:
+        early_end = max(2, int(len(motion_curve) * ADDRESS_EARLY_FRACTION))
+        early_motion_baseline = float(np.median(motion_curve[:early_end]))
+
+    early_wrist_min = None
+    if wrist_curve is not None and len(wrist_curve) >= 3:
+        early_end = max(2, int(len(wrist_curve) * ADDRESS_EARLY_FRACTION))
+        early_wrist_min = min(wrist_curve[:early_end])
 
     for phase, frame_idx in phase_indices.items():
         pose_conf = pose_sequence.confidence_at(frame_idx)
@@ -223,8 +318,50 @@ def validate_phase_assignments(
                         validated = False
                         reason = "Impact frame motion is not in the downswing peak window."
         elif phase == "address" and address_idx is not None:
-            validated = True
-            reason = "Address anchor frame."
+            local = local_lookup.get(address_idx)
+            if local is not None and motion_curve is not None and local < len(motion_curve):
+                if motion_curve[local] > max(0.12, early_motion_baseline * 2.5):
+                    validated = False
+                    reason = "Address frame has too much motion for a setup still."
+                elif (
+                    early_wrist_min is not None
+                    and wrist_curve is not None
+                    and local < len(wrist_curve)
+                    and wrist_curve[local] < early_wrist_min - 0.08
+                ):
+                    validated = False
+                    reason = "Address frame wrists are already raised above early setup."
+                else:
+                    reason = "Address anchor frame."
+            else:
+                reason = "Address anchor frame."
+        elif phase == "takeaway" and takeaway_idx is not None and wrist_curve is not None:
+            local = local_lookup.get(takeaway_idx)
+            address_local = local_lookup.get(address_idx) if address_idx is not None else None
+            top_local = local_lookup.get(top_idx) if top_idx is not None else None
+            if (
+                local is not None
+                and address_local is not None
+                and top_local is not None
+                and address_local < len(wrist_curve)
+                and top_local < len(wrist_curve)
+                and local < len(wrist_curve)
+            ):
+                travel = wrist_curve[address_local] - wrist_curve[top_local]
+                if travel >= 0.02:
+                    rise_frac = (wrist_curve[address_local] - wrist_curve[local]) / travel
+                    if rise_frac < TAKEAWAY_RISE_MIN:
+                        validated = False
+                        reason = "Takeaway frame is still too close to address."
+                    elif rise_frac > TAKEAWAY_RISE_MAX:
+                        validated = False
+                        reason = "Takeaway frame is too close to the top of the swing."
+                    else:
+                        reason = "Takeaway mid-rise frame."
+                else:
+                    reason = "Takeaway span fallback (flat wrist curve)."
+            else:
+                reason = "Takeaway frame."
 
         if validated and not reason:
             reason = "Pose-validated phase frame."

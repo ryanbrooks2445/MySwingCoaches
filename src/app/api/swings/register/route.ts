@@ -50,12 +50,8 @@ export async function POST(request: NextRequest) {
   ) {
     await service.storage.from("swing-videos").remove([session.storage_path]);
     await service.from("upload_sessions").update({ status: "failed" }).eq("id", sessionId);
-    await service.rpc("service_restore_analysis_credit", {
-      p_report_id: session.report_id,
-      p_reason: "upload_verification_failed",
-    });
     return NextResponse.json(
-      { error: "The uploaded video could not be verified. Your credit was restored." },
+      { error: "The uploaded video could not be verified. Please try uploading again." },
       { status: 400 }
     );
   }
@@ -72,15 +68,20 @@ export async function POST(request: NextRequest) {
   if (registerError || !reportId) {
     await service.storage.from("swing-videos").remove([session.storage_path]);
     await service.from("upload_sessions").update({ status: "failed" }).eq("id", sessionId);
-    await service.rpc("service_restore_analysis_credit", {
-      p_report_id: session.report_id,
-      p_reason: "registration_failed",
-    });
     return NextResponse.json(
-      { error: "We could not queue this analysis. Your credit was restored." },
+      { error: "We could not save this upload. Please try again." },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ reportId });
+  const { data: report } = await service
+    .from("swing_reports")
+    .select("status")
+    .eq("id", reportId)
+    .single();
+
+  return NextResponse.json({
+    reportId,
+    status: report?.status ?? "awaiting_payment",
+  });
 }

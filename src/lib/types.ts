@@ -2,7 +2,7 @@ export type UserRole = "user" | "coach" | "admin";
 export type SubscriptionPlan = "free" | "player" | "serious" | "unlimited_annual";
 export type { SwingMode } from "@/lib/pricing";
 export type VideoStatus = "uploaded" | "processing" | "ready" | "failed";
-export type ReportStatus = "processing" | "ready" | "failed";
+export type ReportStatus = "awaiting_payment" | "processing" | "ready" | "failed";
 export type IssueSeverity = "low" | "medium" | "high";
 
 export interface Profile {

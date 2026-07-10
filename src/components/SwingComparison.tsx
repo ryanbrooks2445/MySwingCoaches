@@ -3,6 +3,7 @@
 import type { KeyFrameUrl } from "@/lib/types";
 import type { ProgressState } from "@/lib/phase-frames";
 import { confidenceBadgeClass, confidenceLabel } from "@/lib/phase-frames";
+import { formatPhaseLabel } from "@/lib/status-labels";
 import { cn } from "@/lib/utils";
 
 const STATE_LABELS: Record<ProgressState, string> = {
@@ -91,7 +92,7 @@ export function SwingComparison({
                     </div>
                   )}
                   <figcaption className="px-2 py-1 text-xs text-[var(--color-muted)]">
-                    Then · {phase.replaceAll("_", " ")}
+                    Then · {formatPhaseLabel(phase)}
                   </figcaption>
                 </figure>
                 <figure className="overflow-hidden rounded-lg border border-[var(--color-border)]">
@@ -108,7 +109,7 @@ export function SwingComparison({
                     </div>
                   )}
                   <figcaption className="flex gap-1 px-2 py-1 text-xs text-[var(--color-muted)]">
-                    <span>Now · {phase.replaceAll("_", " ")}</span>
+                    <span>Now · {formatPhaseLabel(phase)}</span>
                     {current?.confidence !== undefined && (
                       <span
                         className={cn(

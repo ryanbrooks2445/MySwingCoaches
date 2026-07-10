@@ -18,12 +18,6 @@ export const EXAMPLE_SIMPLIFIED_REPORT: SimplifiedSwingReport = {
         "Take ten setup rehearsals with a club across your shoulders. Pause at address, feel laces pressure, then make fifteen half-speed shots checking the same feel.",
     },
   ],
-  practice_plan: [
-    "Day 1–2: Ten setup rehearsals, then twenty half-speed 7-irons focusing on laces pressure.",
-    "Day 3–4: Face-on filming — confirm head level and centered pressure through takeaway.",
-    "Day 5–6: Down-the-line half swings — check lead-hip clearing without early extension.",
-    "Day 7: Record a full swing upload to confirm stable posture from address through impact.",
-  ],
   next_swing_check:
     "Confirm centered pressure and stable posture from face-on — head level through takeaway, no drift toward the ball in transition.",
   advanced_details: {

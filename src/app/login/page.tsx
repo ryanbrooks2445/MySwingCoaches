@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useState } from "react";
+import { AuthLayout } from "@/components/AuthLayout";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
@@ -47,9 +48,20 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <h1 className="text-2xl font-semibold">Log in</h1>
+    <AuthLayout
+      asideTitle="Welcome back to the range"
+      asideDescription="Pick up where you left off — your reports and upload history are waiting."
+      asideFooter={
+        <Link
+          href="/example"
+          className="inline-flex text-sm font-medium text-[var(--color-lime)] hover:underline"
+        >
+          See a full example report →
+        </Link>
+      }
+    >
+      <Card className="ring-gradient w-full max-w-md rounded-3xl">
+        <h1 className="font-display text-2xl font-bold">Log in</h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">Welcome back to ForeFixed</p>
 
         <div className="mt-6">
@@ -65,28 +77,28 @@ function LoginForm() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block text-sm">
             <span className="font-medium">Email</span>
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 text-sm"
-          />
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input-field"
+            />
           </label>
           <label className="block text-sm">
             <span className="font-medium">Password</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 text-sm"
-          />
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input-field"
+            />
           </label>
-          {error && <p className="text-sm text-red-500">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
+          {error && <p role="alert" className="text-sm text-[var(--color-danger)]">{error}</p>}
+          <Button type="submit" variant="cta" className="w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
           </Button>
         </form>
@@ -94,7 +106,7 @@ function LoginForm() {
           No account?{" "}
           <Link
             href={`/signup?redirect=${encodeURIComponent(redirectTo)}`}
-            className="text-[var(--color-accent)] hover:underline"
+            className="font-medium text-[var(--color-accent)] hover:underline"
           >
             Create a new account
           </Link>
@@ -105,7 +117,7 @@ function LoginForm() {
           </Link>
         </p>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }
 

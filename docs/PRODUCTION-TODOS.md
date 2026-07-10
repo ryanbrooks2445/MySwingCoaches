@@ -1,19 +1,21 @@
 # Production TODOs
 
-Items intentionally stubbed or simplified in the MVP.
+Items still open after launch hardening. Completed Stripe, queue, rate-limit wiring, and core auth/upload flows live in the app — see README deploy checklist.
 
-## Payments
+## Legal (manual)
 
-- [ ] Stripe Checkout for Player ($19/mo) and Serious Golfer ($49/mo) plans
-- [ ] Stripe webhooks to sync `subscriptions` status, period, and usage resets
-- [ ] Coach Review add-on as Stripe line item or one-time payment
+- [ ] Attorney review of Terms, Privacy, and Refund Policy; remove in-page attorney-review notices after counsel sign-off
+- [ ] Enable Supabase Auth leaked-password protection in the dashboard
+- [ ] Confirm Supabase Auth email confirmation templates + redirect allow list for production domain
 
 ## Infrastructure
 
-- [ ] Background job queue (Inngest, Trigger.dev, or Supabase Edge Functions + queue) instead of synchronous FastAPI call from Next.js
-- [ ] Webhook auth + idempotency keys for `/analyze`
-- [ ] Rate limiting (Upstash Redis) on upload and analyze endpoints
-- [ ] Horizontal scaling for analysis workers
+- [ ] Configure Upstash Redis env vars in Vercel (required in production)
+- [ ] Configure Resend + SUPPORT_INBOX_EMAIL for support alerts
+- [ ] Configure Plausible domain (`NEXT_PUBLIC_PLAUSIBLE_DOMAIN`)
+- [ ] Configure Sentry DSN (`SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN`) for web + analysis-service
+- [ ] Virus scan on uploaded videos
+- [ ] Content moderation for storage
 - [ ] CDN for swing-frames bucket; retention / lifecycle policies
 
 ## Analysis quality
@@ -21,20 +23,6 @@ Items intentionally stubbed or simplified in the MVP.
 - [ ] Host proprietary drill clips in Supabase `drill-videos` bucket (replace YouTube catalog URLs)
 - [ ] Trained swing phase classifier for better key-frame labels
 - [ ] FFmpeg transcoding pipeline (normalize fps, resolution, rotation from phone metadata)
-- [ ] Camera-angle guidance in upload flow (face-on vs down-the-line)
-
-## Security & compliance
-
-- [ ] Virus scan on uploaded videos
-- [ ] Content moderation for storage
-- [ ] Audit logging for service-role operations
-- [ ] Legal review of coaching claims and disclaimer copy
-
-## Observability
-
-- [ ] Sentry (frontend + FastAPI)
-- [ ] Structured logging with analysis_id correlation
-- [ ] Metrics: analysis duration, Gemini latency, failure rates
 
 ## Product
 

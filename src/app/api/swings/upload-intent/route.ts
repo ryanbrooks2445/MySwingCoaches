@@ -54,17 +54,6 @@ export async function POST(request: NextRequest) {
   const storagePath = `${user.id}/${videoId}/swing.${extension}`;
   const service = createServiceClient();
 
-  const { data: reserved, error: reserveError } = await service.rpc(
-    "service_reserve_analysis_credit",
-    { p_user_id: user.id, p_report_id: reportId }
-  );
-  if (reserveError || !reserved) {
-    return NextResponse.json(
-      { error: "No analysis credit is available. Purchase one before uploading." },
-      { status: 402 }
-    );
-  }
-
   const { error: sessionError } = await service.from("upload_sessions").insert({
     id: sessionId,
     user_id: user.id,
@@ -78,10 +67,6 @@ export async function POST(request: NextRequest) {
   });
 
   if (sessionError) {
-    await service.rpc("service_restore_analysis_credit", {
-      p_report_id: reportId,
-      p_reason: "upload_session_failed",
-    });
     return NextResponse.json({ error: "Could not prepare the upload." }, { status: 500 });
   }
 
@@ -91,10 +76,6 @@ export async function POST(request: NextRequest) {
 
   if (signedError || !signed?.token) {
     await service.from("upload_sessions").update({ status: "failed" }).eq("id", sessionId);
-    await service.rpc("service_restore_analysis_credit", {
-      p_report_id: reportId,
-      p_reason: "signed_upload_failed",
-    });
     return NextResponse.json({ error: "Could not prepare secure video storage." }, { status: 500 });
   }
 

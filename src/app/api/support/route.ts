@@ -1,7 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+import { captureServerError } from "@/lib/monitoring";
+import { APP_NAME } from "@/lib/brand";
+
+async function notifySupportInbox(args: {
+  email: string;
+  subject: string;
+  message: string;
+  userId: string | null;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const inbox = process.env.SUPPORT_INBOX_EMAIL?.trim();
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
+  if (!apiKey || !inbox || !from) {
+    console.warn("support_email_not_configured");
+    return;
+  }
+
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from,
+    to: inbox,
+    replyTo: args.email,
+    subject: `[${APP_NAME} support] ${args.subject}`,
+    text: [
+      `From: ${args.email}`,
+      args.userId ? `User ID: ${args.userId}` : "User ID: (anonymous)",
+      "",
+      args.message,
+    ].join("\n"),
+  });
+
+  if (error) {
+    throw new Error(error.message || "Resend send failed");
+  }
+}
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimit(request, {
@@ -44,5 +80,17 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  try {
+    await notifySupportInbox({
+      email,
+      subject,
+      message,
+      userId: user?.id ?? null,
+    });
+  } catch (err) {
+    await captureServerError(err, { path: "/api/support", method: "POST" });
+  }
+
   return NextResponse.json({ success: true });
 }

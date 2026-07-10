@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { createServiceClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -27,17 +26,24 @@ export async function POST(request: NextRequest) {
 
   const normalizedEmail = email.trim();
   const trimmedName = displayName.trim();
-  const service = createServiceClient();
+  const next =
+    typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : "/dashboard";
 
-  const { error: createError } = await service.auth.admin.createUser({
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, "");
+  const emailRedirectTo = `${appUrl}/auth/callback?next=${encodeURIComponent(next)}`;
+
+  const supabase = await createClient();
+  const { data, error: signUpError } = await supabase.auth.signUp({
     email: normalizedEmail,
     password,
-    email_confirm: true,
-    user_metadata: { display_name: trimmedName },
+    options: {
+      data: { display_name: trimmedName },
+      emailRedirectTo,
+    },
   });
 
-  if (createError) {
-    const message = createError.message.toLowerCase();
+  if (signUpError) {
+    const message = signUpError.message.toLowerCase();
     if (message.includes("already") || message.includes("registered")) {
       return NextResponse.json(
         { error: "An account with this email already exists. Try logging in instead." },
@@ -47,20 +53,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "We could not create that account." }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: normalizedEmail,
-    password,
-  });
-  if (signInError) {
+  // Supabase returns a user with empty identities when the email is already registered
+  // and email confirmation is enabled (anti-enumeration). Treat as existing account.
+  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
     return NextResponse.json(
-      { error: "Account created, but sign-in failed. Try logging in." },
+      { error: "An account with this email already exists. Try logging in instead." },
       { status: 400 }
     );
   }
 
-  const next =
-    typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+  // Session present means email confirmation is disabled in the project — user is signed in.
+  if (data.session) {
+    return NextResponse.json({ success: true, redirectTo: next });
+  }
 
-  return NextResponse.json({ success: true, redirectTo: next });
+  return NextResponse.json({
+    success: true,
+    needsEmailConfirmation: true,
+    email: normalizedEmail,
+  });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import type Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { captureServerError } from "@/lib/monitoring";
 import {
   PRICE_PER_ANALYSIS_CENTS,
   PRODUCT_ANNUAL_UNLIMITED,
@@ -81,6 +82,17 @@ async function fulfillSwingUploadSession(session: Stripe.Checkout.Session): Prom
   });
   if (error) {
     throw new Error(error.message);
+  }
+
+  const reportId = session.metadata?.report_id;
+  if (reportId) {
+    const { data: started, error: startError } = await serviceClient.rpc(
+      "service_start_queued_analysis",
+      { p_report_id: reportId, p_user_id: userId }
+    );
+    if (startError || !started) {
+      throw new Error(startError?.message ?? "Could not start analysis after checkout");
+    }
   }
 }
 
@@ -225,6 +237,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Webhook handler failed";
     console.error("Stripe webhook handler error:", message);
+    await captureServerError(err, { path: "/api/stripe/webhook", method: "POST" });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 

@@ -2,17 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
+import { PageHero } from "@/components/PageHero";
+import { Reveal } from "@/components/Reveal";
 import { GolferProfileForm } from "@/components/GolferProfileForm";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { readApiResponse } from "@/lib/api-response";
+import { trackEvent } from "@/lib/analytics";
 import { createClient } from "@/lib/supabase/client";
 import {
-  PRICE_ANNUAL_UNLIMITED_DISPLAY,
-  PRICE_PER_ANALYSIS_DISPLAY,
   SWING_MODE_HINTS,
   SWING_MODE_LABELS,
   SWING_MODES,
@@ -48,7 +48,7 @@ function uploadErrorMessage(message: string): string {
     message.includes("Failed to execute 'json'") ||
     message.includes("Request Entity Too Large")
   ) {
-    return "The video upload was interrupted. Your credit was restored. Please refresh and try a shorter MP4 or MOV.";
+    return "The video upload was interrupted. Please refresh and try a shorter MP4 or MOV.";
   }
   return message;
 }
@@ -139,7 +139,7 @@ export default function UploadPage() {
   const hasCredit = credits === "unlimited" || (credits !== null && credits > 0);
 
   async function handleUpload() {
-    if (!file || !hasCredit || !profileComplete) return;
+    if (!file || !profileComplete) return;
     setUploading(true);
     setError(null);
     setProgress(5);
@@ -212,6 +212,7 @@ export default function UploadPage() {
 
       setProgress(100);
       setStatus("Upload complete. You can leave this page while we analyze it.");
+      trackEvent("upload_complete");
       router.push(`/swings/${registered.reportId}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
@@ -228,32 +229,30 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-3xl font-semibold">Upload</h1>
-        <p className="mt-1 text-[var(--color-muted)]">
-          {PRICE_PER_ANALYSIS_DISPLAY} per analysis or {PRICE_ANNUAL_UNLIMITED_DISPLAY}/year unlimited ·
-          pick your mode first
-        </p>
-        <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-muted)]">
-          Videos are private and automatically removed after 30 days. Most reports are ready in
-          2–5 minutes; free-tier cold starts can take longer.
-        </p>
+      <main id="main-content" className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
+        <Reveal immediate>
+          <PageHero
+            eyebrow="Upload"
+            title="Send your swing for analysis"
+            description="Upload your swing, then pay only when you're ready to analyze."
+          />
+        </Reveal>
 
-        {credits !== null && (
+        <Reveal immediate>
+          <p className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-sand)] px-4 py-3 text-sm text-[var(--color-muted)]">
+            Videos are private and automatically removed after 30 days. Most reports are ready in
+            2–5 minutes; free-tier cold starts can take longer.
+          </p>
+        </Reveal>
+
+        {credits !== null && hasCredit && (
           <p className="mt-2 text-sm">
             {credits === "unlimited" ? (
               <span className="text-[var(--color-accent)]">Unlimited analyses</span>
-            ) : credits > 0 ? (
+            ) : (
               <span>
                 <span className="font-medium text-[var(--color-foreground)]">{credits}</span>{" "}
-                credit{credits === 1 ? "" : "s"} available
-              </span>
-            ) : (
-              <span className="text-red-500">
-                No credits.{" "}
-                <Link href="/pricing" className="underline">
-                  Buy an analysis
-                </Link>
+                credit{credits === 1 ? "" : "s"} available — analysis starts immediately after upload
               </span>
             )}
           </p>
@@ -266,7 +265,7 @@ export default function UploadPage() {
 
         <Card
           className={cn(
-            "mt-8 space-y-6 transition-opacity",
+            "mt-8 rounded-3xl space-y-6 transition-opacity",
             !profileComplete && "pointer-events-none opacity-50"
           )}
         >
@@ -277,12 +276,20 @@ export default function UploadPage() {
           )}
 
           <div>
-            <p className="text-sm font-medium">Mode</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
+            <p className="text-sm font-medium" id="swing-mode-label">
+              Mode
+            </p>
+            <div
+              role="radiogroup"
+              aria-labelledby="swing-mode-label"
+              className="mt-2 grid grid-cols-3 gap-2"
+            >
               {SWING_MODES.map((mode) => (
                 <button
                   key={mode}
                   type="button"
+                  role="radio"
+                  aria-checked={swingMode === mode}
                   disabled={uploading}
                   onClick={() => setSwingMode(mode)}
                   className={cn(
@@ -323,22 +330,19 @@ export default function UploadPage() {
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
-          {hasCredit ? (
-            <Button
-              onClick={handleUpload}
-              disabled={!file || uploading || !profileComplete}
-              className="w-full"
-              size="lg"
-            >
-              {uploading ? "Uploading..." : "Upload securely & analyze"}
-            </Button>
-          ) : (
-            <Link href="/pricing" className="block">
-              <Button className="w-full" size="lg" type="button">
-                Buy credit — {PRICE_PER_ANALYSIS_DISPLAY}
-              </Button>
-            </Link>
-          )}
+          <Button
+            onClick={handleUpload}
+            disabled={!file || uploading || !profileComplete}
+            className="w-full rounded-full"
+            variant="cta"
+            size="lg"
+          >
+            {uploading
+              ? "Uploading..."
+              : hasCredit
+                ? "Upload securely & analyze"
+                : "Upload securely — pay to analyze"}
+          </Button>
         </Card>
       </main>
     </div>

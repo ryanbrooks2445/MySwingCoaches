@@ -45,9 +45,12 @@ Fill in:
 | `STRIPE_SECRET_KEY` | Stripe secret key for Checkout |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for `/api/stripe/webhook` |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Optional for future Stripe Elements; Checkout redirect does not require it |
-| `UPSTASH_REDIS_REST_URL` | Upstash REST endpoint for production rate limits |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST token; server only |
-| `SENTRY_DSN` | Server error monitoring DSN |
+| `UPSTASH_REDIS_REST_URL` | **Required in production** — Upstash REST endpoint for rate limits |
+| `UPSTASH_REDIS_REST_TOKEN` | **Required in production** — Upstash REST token; server only |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry error monitoring (server + browser) |
+| `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` | Plausible site domain (omit to disable analytics) |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `SUPPORT_INBOX_EMAIL` | Support form email alerts |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | Public support address shown on Support/Contact |
 | `ALLOWED_CORS_ORIGINS` | Exact production web origins accepted by Cloud Run |
 
 ### 2. Supabase database
@@ -65,7 +68,9 @@ supabase db push
 
 Storage buckets `swing-videos` and `swing-frames` are created by the migration.
 
-**Sign-up without email confirmation (recommended for dev):** In the [Supabase Dashboard](https://supabase.com/dashboard) → **Authentication** → **Sign In / Providers** → **Email**, disable **Confirm email**. Save. Existing unconfirmed users may still need a one-time SQL confirm in **SQL Editor**:
+**Email confirmation (required for production):** In Supabase → **Authentication** → **Providers** → **Email**, enable **Confirm email**. Set Site URL and redirect allow list to include `https://forefixed.com/auth/callback`. Enable **Leaked password protection** under Auth security settings.
+
+**Local/dev shortcut:** You may disable Confirm email for faster iteration. Existing unconfirmed users can be confirmed with:
 
 ```sql
 UPDATE auth.users
@@ -78,6 +83,7 @@ WHERE email_confirmed_at IS NULL;
 ```bash
 # Frontend
 npm install
+npx playwright install chromium
 
 # Analysis service
 cd analysis-service
