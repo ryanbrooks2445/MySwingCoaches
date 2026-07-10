@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { createClient } from "@/lib/supabase/server";
+import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimit(request, {
@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Enter your email and password." }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  const response = NextResponse.json({ success: true });
+  const supabase = createRouteHandlerClient(request, response);
   const { error } = await supabase.auth.signInWithPassword({
     email: email.trim(),
     password,
@@ -27,5 +28,5 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ success: true });
+  return response;
 }

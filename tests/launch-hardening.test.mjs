@@ -80,6 +80,7 @@ test("password recovery exchanges the auth code before accepting a new password"
   );
 
   assert.match(callback, /exchangeCodeForSession/);
+  assert.match(callback, /createRouteHandlerClient/);
   assert.match(resetPage, /reset-password\?mode=update/);
   assert.match(resetPage, /updateUser\(\{\s*password/);
 });

@@ -68,7 +68,9 @@ supabase db push
 
 Storage buckets `swing-videos` and `swing-frames` are created by the migration.
 
-**Email confirmation (required for production):** In Supabase → **Authentication** → **Providers** → **Email**, enable **Confirm email**. Set Site URL and redirect allow list to include `https://forefixed.com/auth/callback`. Enable **Leaked password protection** under Auth security settings.
+**Email confirmation (required for production):** In Supabase → **Authentication** → **Providers** → **Email**, enable **Confirm email**. Set Site URL and redirect allow list to include `https://forefixed.com/auth/callback` (and `http://localhost:3000/auth/callback` for local dev). Enable **Leaked password protection** under Auth security settings.
+
+**Google sign-in:** In Supabase → **Authentication** → **Providers** → **Google**, enable the provider and add your Google Cloud OAuth client ID/secret. In Google Cloud Console, set authorized redirect URI to `https://<project-ref>.supabase.co/auth/v1/callback`. Add `https://forefixed.com/auth/callback` and `http://localhost:3000/auth/callback` to Supabase **Redirect URLs**.
 
 **Local/dev shortcut:** You may disable Confirm email for faster iteration. Existing unconfirmed users can be confirmed with:
 

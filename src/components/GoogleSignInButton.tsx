@@ -44,7 +44,7 @@ export function GoogleSignInButton({
     setError(null);
     const supabase = createClient();
     const next = redirectTo.startsWith("/") ? redirectTo : "/dashboard";
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+    const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
@@ -53,7 +53,14 @@ export function GoogleSignInButton({
     if (oauthError) {
       setError(oauthError.message);
       setLoading(false);
+      return;
     }
+    if (data?.url) {
+      window.location.assign(data.url);
+      return;
+    }
+    setError("Could not start Google sign-in. Please try again.");
+    setLoading(false);
   }
 
   return (
